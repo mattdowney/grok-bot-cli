@@ -10,6 +10,7 @@ import * as __rspack_external_node_os_4f3c9d58 from "node:os";
 import * as __rspack_external_node_path_806ed179 from "node:path";
 import * as __rspack_external_node_readline_d8f53bef from "node:readline";
 import * as __rspack_external_node_string_decoder_69b9bd04 from "node:string_decoder";
+import * as __rspack_external_node_timers_promises_65684a74 from "node:timers/promises";
 import * as __rspack_external_node_url_3991086a from "node:url";
 import * as __rspack_external_node_worker_threads_28ca7740 from "node:worker_threads";
 import { createRequire as __rspack_createRequire } from "node:module";
@@ -14335,6 +14336,9 @@ var __webpack_modules__ = {
     },
     "node:string_decoder" (module) {
         module.exports = __rspack_external_node_string_decoder_69b9bd04;
+    },
+    "node:timers/promises" (module) {
+        module.exports = __rspack_external_node_timers_promises_65684a74;
     },
     "node:url" (module) {
         module.exports = __rspack_external_node_url_3991086a;
@@ -47822,11 +47826,12 @@ ts() { date -u +%Y-%m-%dT%H:%M:%SZ; }
     },
     "./src/core/gateway.js" (__unused_rspack___webpack_module__, __webpack_exports__, __webpack_require__) {
         var node_crypto__rspack_import_0 = __webpack_require__("node:crypto");
-        var _headers_js__rspack_import_5 = __webpack_require__("./src/core/headers.js");
-        var _app_session_js__rspack_import_1 = __webpack_require__("./src/core/app-session.js");
-        var _store_js__rspack_import_2 = __webpack_require__("./src/core/store.js");
-        var _url_policy_js__rspack_import_3 = __webpack_require__("./src/core/url-policy.js");
-        var _grok_approvals_js__rspack_import_4 = __webpack_require__("./src/core/grok-approvals.js");
+        var node_timers_promises__rspack_import_1 = __webpack_require__("node:timers/promises");
+        var _headers_js__rspack_import_6 = __webpack_require__("./src/core/headers.js");
+        var _app_session_js__rspack_import_2 = __webpack_require__("./src/core/app-session.js");
+        var _store_js__rspack_import_3 = __webpack_require__("./src/core/store.js");
+        var _url_policy_js__rspack_import_4 = __webpack_require__("./src/core/url-policy.js");
+        var _grok_approvals_js__rspack_import_5 = __webpack_require__("./src/core/grok-approvals.js");
         class GatewayError extends Error {
             constructor(message, { status, method } = {}){
                 super(message);
@@ -47866,11 +47871,11 @@ ts() { date -u +%Y-%m-%dT%H:%M:%SZ; }
             const url = (process.env.GROK_BOT_GATEWAY_URL || "").trim();
             if (url && token) {
                 return {
-                    gatewayUrl: (0, _url_policy_js__rspack_import_3.Re)(url.replace(/\/$/, ""), {
+                    gatewayUrl: (0, _url_policy_js__rspack_import_4.Re)(url.replace(/\/$/, ""), {
                         kind: "gateway"
                     }),
                     gatewayToken: token,
-                    gatewayHeaders: (0, _headers_js__rspack_import_5.gx)()
+                    gatewayHeaders: (0, _headers_js__rspack_import_6.gx)()
                 };
             }
             return null;
@@ -47878,22 +47883,22 @@ ts() { date -u +%Y-%m-%dT%H:%M:%SZ; }
         function sessionFromApp() {
             let loaded;
             try {
-                loaded = (0, _app_session_js__rspack_import_1.Z2)();
+                loaded = (0, _app_session_js__rspack_import_2.Z2)();
             } catch (error) {
                 if (accessTokenFromEnv()) return null;
                 throw error instanceof Error ? new GatewayError(error.message) : error;
             }
             if (!loaded) return null;
             return {
-                gatewayUrl: (0, _url_policy_js__rspack_import_3.Re)(loaded.gatewayUrl, {
+                gatewayUrl: (0, _url_policy_js__rspack_import_4.Re)(loaded.gatewayUrl, {
                     kind: "gateway"
                 }),
                 gatewayToken: loaded.gatewayToken,
-                gatewayHeaders: (0, _headers_js__rspack_import_5.bQ)((0, _headers_js__rspack_import_5.dk)(loaded.headers), (0, _headers_js__rspack_import_5.gx)())
+                gatewayHeaders: (0, _headers_js__rspack_import_6.bQ)((0, _headers_js__rspack_import_6.dk)(loaded.headers), (0, _headers_js__rspack_import_6.gx)())
             };
         }
         function hasGatewayAuth() {
-            return Boolean(gatewayOverride() || accessTokenFromEnv() || (0, _app_session_js__rspack_import_1.ZN)());
+            return Boolean(gatewayOverride() || accessTokenFromEnv() || (0, _app_session_js__rspack_import_2.ZN)());
         }
         async function readTextCapped(res, maxBytes) {
             if (!res.body || typeof res.body.getReader !== "function") {
@@ -47940,7 +47945,7 @@ ts() { date -u +%Y-%m-%dT%H:%M:%SZ; }
         }
         async function ensureSandbox(accessToken, { signal } = {}) {
             assertGatewayActive(signal);
-            const url = (0, _url_policy_js__rspack_import_3.Re)(backendBase(), {
+            const url = (0, _url_policy_js__rspack_import_4.Re)(backendBase(), {
                 kind: "backend"
             }) + "/aiserver.v1.GrokBotService/EnsureSandBox";
             let res, body;
@@ -47949,7 +47954,7 @@ ts() { date -u +%Y-%m-%dT%H:%M:%SZ; }
                     method: "POST",
                     redirect: "error",
                     signal: gatewayDeadline(signal),
-                    headers: (0, _headers_js__rspack_import_5._6)(accessToken),
+                    headers: (0, _headers_js__rspack_import_6._6)(accessToken),
                     body: "{}"
                 });
                 body = await readJson(res);
@@ -47960,7 +47965,7 @@ ts() { date -u +%Y-%m-%dT%H:%M:%SZ; }
             assertGatewayActive(signal);
             if (!res.ok) {
                 const detail = body.message || body.error || body.raw || res.statusText;
-                throw new GatewayError("EnsureSandBox failed: " + res.status + " " + (0, _url_policy_js__rspack_import_3.fp)(detail), {
+                throw new GatewayError("EnsureSandBox failed: " + res.status + " " + (0, _url_policy_js__rspack_import_4.fp)(detail), {
                     status: res.status,
                     method: "EnsureSandBox"
                 });
@@ -47971,30 +47976,193 @@ ts() { date -u +%Y-%m-%dT%H:%M:%SZ; }
                 throw new GatewayError("EnsureSandBox returned no gatewayUrl/gatewayToken. Auth may be a dashboard API key (those do not work).");
             }
             return {
-                gatewayUrl: (0, _url_policy_js__rspack_import_3.Re)(String(gatewayUrl).replace(/\/$/, ""), {
+                gatewayUrl: (0, _url_policy_js__rspack_import_4.Re)(String(gatewayUrl).replace(/\/$/, ""), {
                     kind: "gateway"
                 }),
                 gatewayToken: String(gatewayToken),
-                gatewayHeaders: (0, _headers_js__rspack_import_5.bQ)((0, _headers_js__rspack_import_5.Ew)(body), (0, _headers_js__rspack_import_5.gx)())
+                gatewayHeaders: (0, _headers_js__rspack_import_6.bQ)((0, _headers_js__rspack_import_6.Ew)(body), (0, _headers_js__rspack_import_6.gx)())
             };
+        }
+        const sessionOrigins = new WeakMap();
+        function withOrigin(session, origin) {
+            sessionOrigins.set(session, origin);
+            return session;
         }
         async function connectGateway({ signal } = {}) {
             assertGatewayActive(signal);
             const override = gatewayOverride();
-            if (override) return override;
+            if (override) return withOrigin(override, "env");
             const fromApp = sessionFromApp();
-            if (fromApp) return fromApp;
+            if (fromApp) return withOrigin(fromApp, "app");
             const token = accessTokenFromEnv();
             if (!token) {
                 throw new GatewayError("Set CURSOR_ACCESS_TOKEN, or GROK_BOT_GATEWAY_URL + GROK_BOT_GATEWAY_TOKEN. Do not use a Cursor dashboard API key.");
             }
-            return ensureSandbox(token, {
+            return withOrigin(await ensureSandbox(token, {
                 signal
-            });
+            }), "ensure");
+        }
+        const DEFAULT_RETRY_BUDGET_MS = 5 * 60 * 1000;
+        const RETRY_DELAYS_MS = [
+            1000,
+            2000,
+            4000,
+            8000,
+            15000,
+            30000
+        ];
+        const ENSURE_SANDBOX_SPACING_MS = 30000;
+        const READ_METHODS = new Set([
+            "listAgents",
+            "getAgentTranscriptTail",
+            "getAgentThread",
+            "getAgentWorkflows"
+        ]);
+        const PRE_CONNECT_CODES = new Set([
+            "ECONNREFUSED",
+            "ENOTFOUND",
+            "EAI_AGAIN",
+            "EHOSTUNREACH",
+            "ENETUNREACH",
+            "UND_ERR_CONNECT_TIMEOUT"
+        ]);
+        function gatewayRetryBudgetMs() {
+            const raw = (process.env.GROK_BOT_GATEWAY_RETRY_MS ?? "").trim();
+            const value = raw === "" ? DEFAULT_RETRY_BUDGET_MS : Number(raw);
+            return Number.isFinite(value) && value >= 0 ? value : DEFAULT_RETRY_BUDGET_MS;
+        }
+        function networkCode(error) {
+            return error?.cause?.code || error?.code || (error?.name === "TimeoutError" ? "TIMEOUT" : "");
+        }
+        function classifyGatewayFailure(error) {
+            if (error?.reason === "cancelled") return {
+                delivered: null,
+                summary: "cancelled"
+            };
+            const status = error?.status;
+            if (status === 417) return {
+                delivered: false,
+                summary: "the bots' cloud computer is asleep (417)"
+            };
+            if (status === 404 && /could not be routed/i.test(error.message)) {
+                return {
+                    delivered: false,
+                    summary: "the gateway could not route to the bots' cloud computer (404)"
+                };
+            }
+            if (status === 502 || status === 503 || status === 504) {
+                return {
+                    delivered: "maybe",
+                    summary: `the gateway is unavailable (${status})`
+                };
+            }
+            const code = networkCode(error);
+            if (status != null || error instanceof GatewayError || !(code || error instanceof TypeError)) {
+                return {
+                    delivered: null,
+                    summary: error instanceof Error ? error.message : String(error)
+                };
+            }
+            if (PRE_CONNECT_CODES.has(code)) return {
+                delivered: false,
+                summary: `could not connect (${code})`
+            };
+            return {
+                delivered: "maybe",
+                summary: `network error${code ? ` (${code})` : ""}`
+            };
+        }
+        function retryable(method, failure) {
+            return failure.delivered === false || failure.delivered === "maybe" && READ_METHODS.has(method);
+        }
+        function sameSession(a, b) {
+            return a.gatewayUrl === b.gatewayUrl && a.gatewayToken === b.gatewayToken && JSON.stringify(a.gatewayHeaders ?? {}) === JSON.stringify(b.gatewayHeaders ?? {});
+        }
+        async function wakeGateway(session, state, { signal }) {
+            const origin = sessionOrigins.get(session);
+            if (origin === "env") return "kept the fixed GROK_BOT_GATEWAY_URL login";
+            const accessToken = accessTokenFromEnv();
+            if (accessToken && Date.now() - state.lastEnsureAt >= ENSURE_SANDBOX_SPACING_MS) {
+                state.lastEnsureAt = Date.now();
+                try {
+                    const fresh = await ensureSandbox(accessToken, {
+                        signal
+                    });
+                    Object.assign(session, fresh);
+                    return "asked Cursor to wake the box (EnsureSandBox)";
+                } catch (error) {
+                    assertGatewayActive(signal);
+                    return "EnsureSandBox failed: " + (0, _url_policy_js__rspack_import_4.fp)(error instanceof Error ? error.message : String(error));
+                }
+            }
+            if (origin === "app") {
+                let fresh;
+                try {
+                    fresh = sessionFromApp();
+                } catch  {
+                    return "could not re-read the Grok Bot app login";
+                }
+                if (fresh && !sameSession(session, fresh)) {
+                    Object.assign(session, fresh);
+                    return "picked up a new Grok Bot app login";
+                }
+                return "re-read the Grok Bot app login (unchanged)";
+            }
+            return "no way to wake the box from here";
+        }
+        function formatDuration(ms) {
+            const seconds = Math.round(ms / 1000);
+            return seconds < 60 ? `${seconds}s` : `${Math.floor(seconds / 60)}m ${seconds % 60}s`;
+        }
+        function wakeHint(session) {
+            if (accessTokenFromEnv()) return "";
+            return sessionOrigins.get(session) === "env" ? " Wake the box from the Grok Bot app, then try again." : " gbot cannot wake the box without CURSOR_ACCESS_TOKEN; opening the Grok Bot app wakes it.";
         }
         async function gatewayCall(session, method, body = {}, { signal } = {}) {
+            const budget = gatewayRetryBudgetMs();
+            const started = Date.now();
+            const state = {
+                lastEnsureAt: -Infinity
+            };
+            const tried = new Set();
+            for(let attempt = 1;; attempt++){
+                try {
+                    return await gatewayCallOnce(session, method, body, {
+                        signal
+                    });
+                } catch (error) {
+                    const failure = classifyGatewayFailure(error);
+                    const elapsed = Date.now() - started;
+                    if (!retryable(method, failure) || elapsed >= budget) {
+                        if (error instanceof Error) {
+                            error.attempts = attempt;
+                            if (attempt > 1) {
+                                error.message += ` Gave up after ${attempt} attempts over ${formatDuration(elapsed)}: ${failure.summary}.` + (tried.size ? ` Tried: ${[
+                                    ...tried
+                                ].join("; ")}.` : "") + wakeHint(session);
+                            } else if (retryable(method, failure)) {
+                                error.message += ` (${failure.summary}; retries are off).`;
+                            }
+                        }
+                        throw error;
+                    }
+                    const delay = Math.min(RETRY_DELAYS_MS[Math.min(attempt - 1, RETRY_DELAYS_MS.length - 1)], budget - elapsed);
+                    try {
+                        await (0, node_timers_promises__rspack_import_1.setTimeout)(delay, undefined, {
+                            signal
+                        });
+                    } catch  {
+                        assertGatewayActive(signal);
+                    }
+                    tried.add(await wakeGateway(session, state, {
+                        signal
+                    }));
+                }
+            }
+        }
+        async function gatewayCallOnce(session, method, body = {}, { signal } = {}) {
             assertGatewayActive(signal);
-            const base = (0, _url_policy_js__rspack_import_3.Re)(session.gatewayUrl, {
+            const base = (0, _url_policy_js__rspack_import_4.Re)(session.gatewayUrl, {
                 kind: "gateway"
             });
             const url = base + "/api/" + method;
@@ -48003,7 +48171,7 @@ ts() { date -u +%Y-%m-%dT%H:%M:%SZ; }
                 method: "POST",
                 redirect: "error",
                 signal: gatewayDeadline(prompt ? undefined : signal),
-                headers: (0, _headers_js__rspack_import_5.A1)(session),
+                headers: (0, _headers_js__rspack_import_6.A1)(session),
                 body: JSON.stringify(body)
             };
             assertGatewayActive(signal);
@@ -48018,7 +48186,7 @@ ts() { date -u +%Y-%m-%dT%H:%M:%SZ; }
             if (!prompt) assertGatewayActive(signal);
             if (!res.ok) {
                 const detail = data.message || data.error || data.raw || res.statusText;
-                throw new GatewayError(method + " failed: " + res.status + " " + (0, _url_policy_js__rspack_import_3.fp)(String(detail).slice(0, 300)), {
+                throw new GatewayError(method + " failed: " + res.status + " " + (0, _url_policy_js__rspack_import_4.fp)(String(detail).slice(0, 300)), {
                     status: res.status,
                     method
                 });
@@ -48092,8 +48260,8 @@ ts() { date -u +%Y-%m-%dT%H:%M:%SZ; }
                 name: input.name,
                 description: input.description || "",
                 title: input.title || "",
-                avatarShape: assertAvatar("shape", input.avatarShape, _store_js__rspack_import_2.Jb),
-                avatarColor: assertAvatar("color", input.avatarColor, _store_js__rspack_import_2.T7),
+                avatarShape: assertAvatar("shape", input.avatarShape, _store_js__rspack_import_3.Jb),
+                avatarColor: assertAvatar("color", input.avatarColor, _store_js__rspack_import_3.T7),
                 origin: "user"
             });
             return unwrapOne(data);
@@ -48108,8 +48276,8 @@ ts() { date -u +%Y-%m-%dT%H:%M:%SZ; }
                 description: patch.description !== undefined ? String(patch.description) : rec.description
             };
             if (patch.title !== undefined) profile.title = String(patch.title);
-            if (patch.avatarShape !== undefined) profile.avatarShape = assertAvatar("shape", patch.avatarShape, _store_js__rspack_import_2.Jb);
-            if (patch.avatarColor !== undefined) profile.avatarColor = assertAvatar("color", patch.avatarColor, _store_js__rspack_import_2.T7);
+            if (patch.avatarShape !== undefined) profile.avatarShape = assertAvatar("shape", patch.avatarShape, _store_js__rspack_import_3.Jb);
+            if (patch.avatarColor !== undefined) profile.avatarColor = assertAvatar("color", patch.avatarColor, _store_js__rspack_import_3.T7);
             await gatewayCall(session, "updateAgent", {
                 id: rec.id,
                 profile
@@ -48354,12 +48522,12 @@ ts() { date -u +%Y-%m-%dT%H:%M:%SZ; }
                     id: target.id,
                     name: target.name
                 },
-                approvals: transcript.entries.map(_grok_approvals_js__rspack_import_4.Ny).filter(Boolean),
+                approvals: transcript.entries.map(_grok_approvals_js__rspack_import_5.Ny).filter(Boolean),
                 coverage: "Latest 200 transcript entries only; older requests require the owning Grok UI."
             };
         }
         async function respondGrokApproval(session, ref, input) {
-            const { entryId, requestId, decision } = _grok_approvals_js__rspack_import_4.T5.parse({
+            const { entryId, requestId, decision } = _grok_approvals_js__rspack_import_5.T5.parse({
                 ...input,
                 target: ref
             });

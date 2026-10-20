@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { setTimeout as sleep } from "node:timers/promises";
 import { ensureSandboxHeaders, headersFromEnsureSandbox, headersFromEnv, mergeGatewayHeaders, normalizeHeaderMap, requestHeaders } from "./headers.js";
 import { hasGrokBotGatewaySession, loadGrokBotGatewaySession } from "./app-session.js";
 import { AVATAR_COLORS, AVATAR_SHAPES, MAX_GROUP_MEMBERS } from "./store.js";
@@ -154,20 +155,160 @@ async function ensureSandbox(accessToken, { signal } = {}) {
   return { gatewayUrl: assertAllowedCredentialUrl(String(gatewayUrl).replace(/\/$/, ""), { kind: "gateway" }), gatewayToken: String(gatewayToken), gatewayHeaders: mergeGatewayHeaders(headersFromEnsureSandbox(body), headersFromEnv()) };
 }
 
+// Where a session came from decides how a retry can refresh it; kept off the session object itself.
+const sessionOrigins = new WeakMap();
+
+function withOrigin(session, origin) {
+  sessionOrigins.set(session, origin);
+  return session;
+}
+
 export async function connectGateway({ signal } = {}) {
   assertGatewayActive(signal);
   const override = gatewayOverride();
-  if (override) return override;
+  if (override) return withOrigin(override, "env");
   const fromApp = sessionFromApp();
-  if (fromApp) return fromApp;
+  if (fromApp) return withOrigin(fromApp, "app");
   const token = accessTokenFromEnv();
   if (!token) {
     throw new GatewayError("Set CURSOR_ACCESS_TOKEN, or GROK_BOT_GATEWAY_URL + GROK_BOT_GATEWAY_TOKEN. Do not use a Cursor dashboard API key.");
   }
-  return ensureSandbox(token, { signal });
+  return withOrigin(await ensureSandbox(token, { signal }), "ensure");
+}
+
+// Retry window for a sleeping or unreachable box. GROK_BOT_GATEWAY_RETRY_MS=0 turns retries off.
+const DEFAULT_RETRY_BUDGET_MS = 5 * 60 * 1000;
+const RETRY_DELAYS_MS = [1000, 2000, 4000, 8000, 15000, 30000];
+const ENSURE_SANDBOX_SPACING_MS = 30000;
+// Methods that change nothing on the box, so a resend after a lost answer is harmless.
+const READ_METHODS = new Set(["listAgents", "getAgentTranscriptTail", "getAgentThread", "getAgentWorkflows"]);
+// Socket errors raised before any byte of the request left this machine.
+const PRE_CONNECT_CODES = new Set(["ECONNREFUSED", "ENOTFOUND", "EAI_AGAIN", "EHOSTUNREACH", "ENETUNREACH", "UND_ERR_CONNECT_TIMEOUT"]);
+
+export function gatewayRetryBudgetMs() {
+  const raw = (process.env.GROK_BOT_GATEWAY_RETRY_MS ?? "").trim();
+  const value = raw === "" ? DEFAULT_RETRY_BUDGET_MS : Number(raw);
+  return Number.isFinite(value) && value >= 0 ? value : DEFAULT_RETRY_BUDGET_MS;
+}
+
+function networkCode(error) {
+  return error?.cause?.code || error?.code || (error?.name === "TimeoutError" ? "TIMEOUT" : "");
+}
+
+/**
+ * What a failed gateway call means. `delivered` is false when the box surely never saw the
+ * request (safe to resend anything), "maybe" when it might have (resend reads only), and
+ * null when the failure is final.
+ */
+export function classifyGatewayFailure(error) {
+  if (error?.reason === "cancelled") return { delivered: null, summary: "cancelled" };
+  const status = error?.status;
+  // The Grok Bot app reads 417 as "pod hibernated": the box is parked and refused the request.
+  if (status === 417) return { delivered: false, summary: "the bots' cloud computer is asleep (417)" };
+  if (status === 404 && /could not be routed/i.test(error.message)) {
+    return { delivered: false, summary: "the gateway could not route to the bots' cloud computer (404)" };
+  }
+  if (status === 502 || status === 503 || status === 504) {
+    return { delivered: "maybe", summary: `the gateway is unavailable (${status})` };
+  }
+  const code = networkCode(error);
+  // Only fetch transport failures count; a policy or parsing error is final.
+  if (status != null || error instanceof GatewayError || !(code || error instanceof TypeError)) {
+    return { delivered: null, summary: error instanceof Error ? error.message : String(error) };
+  }
+  if (PRE_CONNECT_CODES.has(code)) return { delivered: false, summary: `could not connect (${code})` };
+  return { delivered: "maybe", summary: `network error${code ? ` (${code})` : ""}` };
+}
+
+function retryable(method, failure) {
+  return failure.delivered === false || (failure.delivered === "maybe" && READ_METHODS.has(method));
+}
+
+function sameSession(a, b) {
+  return a.gatewayUrl === b.gatewayUrl && a.gatewayToken === b.gatewayToken &&
+    JSON.stringify(a.gatewayHeaders ?? {}) === JSON.stringify(b.gatewayHeaders ?? {});
+}
+
+// Wake the box the way the app does (EnsureSandBox with a Cursor access token), or pick up a
+// login the app rewrote after waking it. Returns a plain description of what was tried.
+async function wakeGateway(session, state, { signal }) {
+  const origin = sessionOrigins.get(session);
+  if (origin === "env") return "kept the fixed GROK_BOT_GATEWAY_URL login";
+  const accessToken = accessTokenFromEnv();
+  if (accessToken && Date.now() - state.lastEnsureAt >= ENSURE_SANDBOX_SPACING_MS) {
+    state.lastEnsureAt = Date.now();
+    try {
+      const fresh = await ensureSandbox(accessToken, { signal });
+      Object.assign(session, fresh);
+      return "asked Cursor to wake the box (EnsureSandBox)";
+    } catch (error) {
+      assertGatewayActive(signal);
+      return "EnsureSandBox failed: " + redactSecrets(error instanceof Error ? error.message : String(error));
+    }
+  }
+  if (origin === "app") {
+    let fresh;
+    try {
+      fresh = sessionFromApp();
+    } catch {
+      return "could not re-read the Grok Bot app login";
+    }
+    if (fresh && !sameSession(session, fresh)) {
+      Object.assign(session, fresh);
+      return "picked up a new Grok Bot app login";
+    }
+    return "re-read the Grok Bot app login (unchanged)";
+  }
+  return "no way to wake the box from here";
+}
+
+function formatDuration(ms) {
+  const seconds = Math.round(ms / 1000);
+  return seconds < 60 ? `${seconds}s` : `${Math.floor(seconds / 60)}m ${seconds % 60}s`;
+}
+
+function wakeHint(session) {
+  if (accessTokenFromEnv()) return "";
+  return sessionOrigins.get(session) === "env"
+    ? " Wake the box from the Grok Bot app, then try again."
+    : " gbot cannot wake the box without CURSOR_ACCESS_TOKEN; opening the Grok Bot app wakes it.";
 }
 
 async function gatewayCall(session, method, body = {}, { signal } = {}) {
+  const budget = gatewayRetryBudgetMs();
+  const started = Date.now();
+  const state = { lastEnsureAt: -Infinity };
+  const tried = new Set();
+  for (let attempt = 1; ; attempt++) {
+    try {
+      return await gatewayCallOnce(session, method, body, { signal });
+    } catch (error) {
+      const failure = classifyGatewayFailure(error);
+      const elapsed = Date.now() - started;
+      if (!retryable(method, failure) || elapsed >= budget) {
+        if (error instanceof Error) {
+          error.attempts = attempt;
+          if (attempt > 1) {
+            error.message += ` Gave up after ${attempt} attempts over ${formatDuration(elapsed)}: ${failure.summary}.` +
+              (tried.size ? ` Tried: ${[...tried].join("; ")}.` : "") + wakeHint(session);
+          } else if (retryable(method, failure)) {
+            error.message += ` (${failure.summary}; retries are off).`;
+          }
+        }
+        throw error;
+      }
+      const delay = Math.min(RETRY_DELAYS_MS[Math.min(attempt - 1, RETRY_DELAYS_MS.length - 1)], budget - elapsed);
+      try {
+        await sleep(delay, undefined, { signal });
+      } catch {
+        assertGatewayActive(signal);
+      }
+      tried.add(await wakeGateway(session, state, { signal }));
+    }
+  }
+}
+
+async function gatewayCallOnce(session, method, body = {}, { signal } = {}) {
   assertGatewayActive(signal);
   const base = assertAllowedCredentialUrl(session.gatewayUrl, { kind: "gateway" });
   const url = base + "/api/" + method;

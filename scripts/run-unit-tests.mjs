@@ -36,7 +36,8 @@ const files = readdirSync(dir)
 const result = spawnSync(process.execPath, ["--test", ...files], {
   cwd: root,
   // Loopback-only credential URLs (src/core/url-policy.js testMode): a test can never reach a live gateway.
-  env: { ...process.env, GROK_BOT_TEST: "1" },
+  // Retries off unless a test turns them on: a mocked outage must fail fast, not wait out the 5 minute window.
+  env: { ...process.env, GROK_BOT_TEST: "1", GROK_BOT_GATEWAY_RETRY_MS: process.env.GROK_BOT_GATEWAY_RETRY_MS ?? "0" },
   stdio: "inherit",
 });
 process.exit(result.status === null ? 1 : result.status);

@@ -375,6 +375,20 @@ you need), then read the reply with `gbot_thread`. Do not block a turn waiting
 for it.
 ```
 
+## When the box is asleep
+
+Grok Bot parks the cloud computer while you are away, and the gateway then answers
+`417`. gbot retries for up to 5 minutes with backoff on `417`, an unroutable `404`,
+`502`/`503`/`504`, and network errors. Before each retry it wakes the box with
+`EnsureSandBox` when `CURSOR_ACCESS_TOKEN` is set (as the app does), or re-reads the
+app session in case the app has woken it. Without that token, opening the Grok Bot
+app wakes the box.
+
+Reads are retried on any of those failures. `sendPrompt` and other writes are resent
+only when the box surely never saw them (`417`, unroutable `404`, a connection that
+never opened); after a `5xx` or a dropped connection they fail as delivery unknown.
+Set `GROK_BOT_GATEWAY_RETRY_MS` to change the window, or `0` to turn retries off.
+
 ## Local history
 
 Recording is **opt-in**. Set `GROK_BOT_HISTORY=on` (or `true`/`1`) to append successful
