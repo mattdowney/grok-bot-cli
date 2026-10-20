@@ -135,11 +135,88 @@ test("rejects a version 2 descriptor with no entries", () => {
   );
 });
 
+function encryptDarwinSafeStorage(clear, password = "demo-password") {
+  const key = crypto.pbkdf2Sync(password, "saltysalt", 1003, 16, "sha1");
+  const cipher = crypto.createCipheriv("aes-128-cbc", key, Buffer.alloc(16, 32));
+  return Buffer.concat([Buffer.from("v10", "latin1"), cipher.update(clear, "utf8"), cipher.final()]).toString("base64");
+}
+
+function loadDarwin(home) {
+  return loadGrokBotGatewaySession({ platform: "darwin", home, getKeychainPassword: () => "demo-password" });
+}
+
+test("loads a version 3 Grok Bot gateway entry", () => {
+  const home = writeWrappedDescriptor({
+    version: 3,
+    entries: { primary: { encrypted: ENCRYPTED_DESCRIPTOR, savedAtMs: 1_787_000_000_000 } },
+  });
+
+  assert.deepEqual(loadDarwin(home), {
+    gatewayUrl: "https://box.example",
+    gatewayToken: "gateway-token",
+    headers: { "x-anyrun-network-token": "route-token" },
+  });
+});
+
+test("picks the newest saved entry when several are saved", () => {
+  const older = encryptDarwinSafeStorage(JSON.stringify({ baseUrl: "https://old.example", token: "old-token" }));
+  const newer = encryptDarwinSafeStorage(JSON.stringify({ baseUrl: "https://new.example", token: "new-token" }));
+  for (const version of [2, 3]) {
+    const home = writeWrappedDescriptor({
+      version,
+      entries: { b: { encrypted: newer, savedAtMs: 20 }, a: { encrypted: older, savedAtMs: 10 } },
+    });
+    assert.equal(loadDarwin(home).gatewayUrl, "https://new.example");
+  }
+});
+
+test("reads a gateway nested under a connection wrapper", () => {
+  const encrypted = encryptDarwinSafeStorage(JSON.stringify({
+    connection: {
+      baseUrl: "https://box.example/",
+      token: "gateway-token",
+      headers: { "x-anyrun-network-token": "route-token" },
+      vncProxy: { primaryUrl: "https://vnc.example", forkBaseUrl: "https://fork.example", networkToken: "route-token" },
+    },
+  }));
+  const home = writeWrappedDescriptor({ version: 3, entries: { primary: { encrypted, savedAtMs: 1 } } });
+
+  assert.deepEqual(loadDarwin(home), {
+    gatewayUrl: "https://box.example",
+    gatewayToken: "gateway-token",
+    headers: { "x-anyrun-network-token": "route-token" },
+  });
+});
+
+test("names the fields, never the values, of an incomplete decrypted descriptor", () => {
+  const encrypted = encryptDarwinSafeStorage(JSON.stringify({ connection: { url: "https://box.example", secret: "s3cret" } }));
+  const home = writeWrappedDescriptor({ version: 3, entries: { primary: { encrypted, savedAtMs: 1 } } });
+
+  assert.throws(() => loadDarwin(home), (error) => {
+    assert.equal(error.code, "INCOMPLETE_DESCRIPTOR");
+    assert.match(error.message, /keys \[secret, url\]/);
+    assert.doesNotMatch(error.message, /s3cret|box\.example/);
+    return true;
+  });
+});
+
+test("rejects several saved entries without one newest savedAtMs", () => {
+  const home = writeWrappedDescriptor({
+    version: 3,
+    entries: {
+      first: { encrypted: ENCRYPTED_DESCRIPTOR, savedAtMs: 1 },
+      second: { encrypted: ENCRYPTED_DESCRIPTOR },
+    },
+  });
+
+  assert.throws(() => loadDarwin(home), { code: "AMBIGUOUS_ENTRIES" });
+});
+
 test("rejects a version 2 descriptor with ambiguous entries", () => {
   const home = writeWrappedDescriptor({
     version: 2,
     entries: {
-      first: { encrypted: ENCRYPTED_DESCRIPTOR, savedAtMs: 1 },
+      first: { encrypted: ENCRYPTED_DESCRIPTOR, savedAtMs: 2 },
       second: { encrypted: ENCRYPTED_DESCRIPTOR, savedAtMs: 2 },
     },
   });
@@ -182,8 +259,8 @@ test("rejects a gateway entry without an encrypted payload", () => {
 
 test("rejects an unsupported gateway descriptor version", () => {
   const home = writeWrappedDescriptor({
-    version: 3,
-    encrypted: ENCRYPTED_DESCRIPTOR,
+    version: 4,
+    sealed: ENCRYPTED_DESCRIPTOR,
   });
 
   assert.throws(
@@ -195,7 +272,8 @@ test("rejects an unsupported gateway descriptor version", () => {
     (error) => {
       assert.equal(error.name, "GrokBotGatewaySessionError");
       assert.equal(error.code, "UNSUPPORTED_VERSION");
-      assert.match(error.message, /unsupported .*gateway descriptor version 3/i);
+      assert.match(error.message, /unsupported .*gateway descriptor version 4 \(keys \[sealed, version\]\)/i);
+      assert.doesNotMatch(error.message, new RegExp(ENCRYPTED_DESCRIPTOR.slice(0, 12)));
       return true;
     },
   );
