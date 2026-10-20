@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { setTimeout as sleep } from "node:timers/promises";
 import { ensureSandboxHeaders, headersFromEnsureSandbox, headersFromEnv, mergeGatewayHeaders, normalizeHeaderMap, requestHeaders } from "./headers.js";
 import { hasGrokBotGatewaySession, loadGrokBotGatewaySession } from "./app-session.js";
+import { logGatewayFailure } from "./failure-log.js";
 import { AVATAR_COLORS, AVATAR_SHAPES, MAX_GROUP_MEMBERS } from "./store.js";
 import { assertAllowedCredentialUrl, redactSecrets } from "./url-policy.js";
 import { grokApproval, grokApprovalResponseSchema } from "./grok-approvals.js";
@@ -243,6 +244,7 @@ async function wakeGateway(session, state, { signal }) {
       return "asked Cursor to wake the box (EnsureSandBox)";
     } catch (error) {
       assertGatewayActive(signal);
+      logGatewayFailure({ method: "EnsureSandBox", status: error?.status, code: networkCode(error), attempt: 1, retrying: false, elapsedMs: Date.now() - state.lastEnsureAt });
       return "EnsureSandBox failed: " + redactSecrets(error instanceof Error ? error.message : String(error));
     }
   }
@@ -285,14 +287,18 @@ async function gatewayCall(session, method, body = {}, { signal } = {}) {
     } catch (error) {
       const failure = classifyGatewayFailure(error);
       const elapsed = Date.now() - started;
-      if (!retryable(method, failure) || elapsed >= budget) {
+      const retrying = retryable(method, failure) && elapsed < budget;
+      if (error?.status != null || failure.delivered !== null) {
+        logGatewayFailure({ method, status: error?.status, code: networkCode(error), attempt, retrying, elapsedMs: elapsed });
+      }
+      if (!retrying) {
         if (error instanceof Error) {
           error.attempts = attempt;
           if (attempt > 1) {
             error.message += ` Gave up after ${attempt} attempts over ${formatDuration(elapsed)}: ${failure.summary}.` +
               (tried.size ? ` Tried: ${[...tried].join("; ")}.` : "") + wakeHint(session);
           } else if (retryable(method, failure)) {
-            error.message += ` (${failure.summary}; retries are off).`;
+            error.message += ` (${failure.summary}; ${budget === 0 ? "retries are off" : "no retry time left"}).`;
           }
         }
         throw error;

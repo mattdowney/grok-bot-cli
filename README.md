@@ -389,6 +389,11 @@ only when the box surely never saw them (`417`, unroutable `404`, a connection t
 never opened); after a `5xx` or a dropped connection they fail as delivery unknown.
 Set `GROK_BOT_GATEWAY_RETRY_MS` to change the window, or `0` to turn retries off.
 
+Every failed gateway attempt appends one JSONL row (`time`, `method`, `status`,
+`code` for network errors, `attempt`, `retrying`, `elapsedMs`) to
+`~/.grok-bot-cli/gateway-failures.jsonl`. Rows never hold a URL, header, token or
+response body. Set `GROK_BOT_FAILURE_LOG` to another path, or to `off`.
+
 ## Local history
 
 Recording is **opt-in**. Set `GROK_BOT_HISTORY=on` (or `true`/`1`) to append successful
