@@ -380,9 +380,16 @@ for it.
 Grok Bot parks the cloud computer while you are away, and the gateway then answers
 `417`. gbot retries for up to 5 minutes with backoff on `417`, an unroutable `404`,
 `502`/`503`/`504`, and network errors. Before each retry it wakes the box with
-`EnsureSandBox` when `CURSOR_ACCESS_TOKEN` is set (as the app does), or re-reads the
-app session in case the app has woken it. Without that token, opening the Grok Bot
+`EnsureSandBox` when a Cursor access token is available (as the app does), or re-reads
+the app session in case the app has woken it. Without a token, opening the Grok Bot
 app wakes the box.
+
+The token comes from `CURSOR_ACCESS_TOKEN`, or from 1Password when
+`GROK_BOT_CURSOR_TOKEN_OP` holds an `op://vault/item/field` reference: gbot runs
+`op read` only when it needs the token and keeps it in memory, never on disk or in
+output. The same token connects through `EnsureSandBox` when there is no app login.
+A `401` or `403` from Cursor fails at once with a message to refresh the token.
+App logins saved more than 7 days ago count as expired, as they do in the app.
 
 Reads are retried on any of those failures. `sendPrompt` and other writes are resent
 only when the box surely never saw them (`417`, unroutable `404`, a connection that

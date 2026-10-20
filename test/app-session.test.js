@@ -99,7 +99,7 @@ test("loads a version 2 Grok Bot gateway entry", () => {
     entries: {
       primary: {
         encrypted: ENCRYPTED_DESCRIPTOR,
-        savedAtMs: 1_787_000_000_000,
+        savedAtMs: Date.now() - 60_000,
       },
     },
   });
@@ -148,7 +148,7 @@ function loadDarwin(home) {
 test("loads a version 3 Grok Bot gateway entry", () => {
   const home = writeWrappedDescriptor({
     version: 3,
-    entries: { primary: { encrypted: ENCRYPTED_DESCRIPTOR, savedAtMs: 1_787_000_000_000 } },
+    entries: { primary: { encrypted: ENCRYPTED_DESCRIPTOR, savedAtMs: Date.now() - 60_000 } },
   });
 
   assert.deepEqual(loadDarwin(home), {
@@ -164,7 +164,7 @@ test("picks the newest saved entry when several are saved", () => {
   for (const version of [2, 3]) {
     const home = writeWrappedDescriptor({
       version,
-      entries: { b: { encrypted: newer, savedAtMs: 20 }, a: { encrypted: older, savedAtMs: 10 } },
+      entries: { b: { encrypted: newer, savedAtMs: Date.now() - 1_000 }, a: { encrypted: older, savedAtMs: Date.now() - 2_000 } },
     });
     assert.equal(loadDarwin(home).gatewayUrl, "https://new.example");
   }
@@ -179,7 +179,7 @@ test("reads a gateway nested under a connection wrapper", () => {
       vncProxy: { primaryUrl: "https://vnc.example", forkBaseUrl: "https://fork.example", networkToken: "route-token" },
     },
   }));
-  const home = writeWrappedDescriptor({ version: 3, entries: { primary: { encrypted, savedAtMs: 1 } } });
+  const home = writeWrappedDescriptor({ version: 3, entries: { primary: { encrypted, savedAtMs: Date.now() } } });
 
   assert.deepEqual(loadDarwin(home), {
     gatewayUrl: "https://box.example",
@@ -190,7 +190,7 @@ test("reads a gateway nested under a connection wrapper", () => {
 
 test("names the fields, never the values, of an incomplete decrypted descriptor", () => {
   const encrypted = encryptDarwinSafeStorage(JSON.stringify({ connection: { url: "https://box.example", secret: "s3cret" } }));
-  const home = writeWrappedDescriptor({ version: 3, entries: { primary: { encrypted, savedAtMs: 1 } } });
+  const home = writeWrappedDescriptor({ version: 3, entries: { primary: { encrypted, savedAtMs: Date.now() } } });
 
   assert.throws(() => loadDarwin(home), (error) => {
     assert.equal(error.code, "INCOMPLETE_DESCRIPTOR");

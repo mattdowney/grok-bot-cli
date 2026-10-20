@@ -42,14 +42,17 @@ function newestEntry(entries) {
   return winners[0];
 }
 
-function encryptedPayload(wrapped) {
+// The app ignores a saved gateway older than this (its gateway-descriptor store's maxAgeMs).
+export const DESCRIPTOR_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
+
+function encryptedPayload(wrapped, now) {
   if (wrapped.version != null && ![1, 2, 3].includes(wrapped.version)) {
     throw new GrokBotGatewaySessionError(
       "UNSUPPORTED_VERSION",
       `Unsupported Grok Bot gateway descriptor version ${JSON.stringify(wrapped.version)} (${describeShape(wrapped)}). gbot reads versions 1, 2 and 3.`,
     );
   }
-  let encrypted;
+  let entry;
   if (wrapped.version === 2 || wrapped.version === 3) {
     const entries = Object.values(wrapped.entries ?? {});
     if (entries.length === 0) {
@@ -58,14 +61,22 @@ function encryptedPayload(wrapped) {
         "Grok Bot gateway descriptor has no saved gateway entries.",
       );
     }
-    encrypted = newestEntry(entries)?.encrypted;
+    entry = newestEntry(entries);
   } else {
-    encrypted = wrapped.encrypted;
+    entry = wrapped;
   }
+  const encrypted = entry?.encrypted;
   if (typeof encrypted !== "string" || !encrypted) {
     throw new GrokBotGatewaySessionError(
       "MISSING_ENCRYPTED_PAYLOAD",
       "Grok Bot gateway descriptor is missing an encrypted payload.",
+    );
+  }
+  if (Number.isFinite(entry.savedAtMs) && now - entry.savedAtMs > DESCRIPTOR_MAX_AGE_MS) {
+    const days = Math.floor((now - entry.savedAtMs) / (24 * 60 * 60 * 1000));
+    throw new GrokBotGatewaySessionError(
+      "STALE_DESCRIPTOR",
+      `Grok Bot gateway login was saved ${days} days ago; the app treats logins over 7 days old as expired. Open the Grok Bot app to refresh it.`,
     );
   }
   return encrypted;
@@ -206,6 +217,7 @@ export function loadGrokBotGatewaySession({
   appData,
   getKeychainPassword = readKeychainPassword,
   unprotectData = unprotectWithDpapi,
+  now = Date.now(),
 } = {}) {
   if (!SUPPORTED_PLATFORMS.has(platform)) return null;
 
@@ -214,7 +226,7 @@ export function loadGrokBotGatewaySession({
   if (!existsSync(path)) return null;
 
   const wrapped = JSON.parse(readFileSync(path, "utf8"));
-  const encrypted = encryptedPayload(wrapped);
+  const encrypted = encryptedPayload(wrapped, now);
   let clear;
   if (platform === "win32") {
     clear = decryptWindowsSafeStorageString(

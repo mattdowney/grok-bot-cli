@@ -1,4 +1,6 @@
+import { execFile } from "node:child_process";
 import { randomUUID } from "node:crypto";
+import { promisify } from "node:util";
 import { setTimeout as sleep } from "node:timers/promises";
 import { ensureSandboxHeaders, headersFromEnsureSandbox, headersFromEnv, mergeGatewayHeaders, normalizeHeaderMap, requestHeaders } from "./headers.js";
 import { hasGrokBotGatewaySession, loadGrokBotGatewaySession } from "./app-session.js";
@@ -45,6 +47,47 @@ function accessTokenFromEnv() {
   return (process.env.CURSOR_ACCESS_TOKEN || "").trim();
 }
 
+// GROK_BOT_CURSOR_TOKEN_OP names a 1Password secret (op://vault/item/field). gbot reads it with
+// `op read` only when a Cursor token is needed, and keeps it in memory for this process.
+const OP_READ_TIMEOUT_MS = 30000;
+const CURSOR_TOKEN_EXPIRED = "Cursor token expired: rerun ~/Desktop/save-cursor-token.sh";
+let opTokenCache = null;
+
+function opTokenRef() {
+  return (process.env.GROK_BOT_CURSOR_TOKEN_OP || "").trim();
+}
+
+function hasCursorToken() {
+  return Boolean(accessTokenFromEnv() || opTokenRef());
+}
+
+async function readOpToken(ref, { signal } = {}) {
+  if (!/^op:\/\/[^/]+\/[^/]+\/[^/]+/.test(ref)) {
+    throw Object.assign(new GatewayError("GROK_BOT_CURSOR_TOKEN_OP must be an op://vault/item/field reference."), { tokenUnavailable: true });
+  }
+  let stdout;
+  try {
+    ({ stdout } = await promisify(execFile)("op", ["read", ref], { encoding: "utf8", timeout: OP_READ_TIMEOUT_MS, maxBuffer: 64 * 1024, signal }));
+  } catch (error) {
+    assertGatewayActive(signal);
+    const detail = String(error?.stderr || error?.code || "failed").trim().split("\n")[0].slice(0, 200);
+    throw Object.assign(new GatewayError(`Could not read the Cursor token from 1Password (op read ${ref}: ${redactSecrets(detail)}).`), { tokenUnavailable: true });
+  }
+  const token = stdout.trim();
+  if (!token) throw Object.assign(new GatewayError(`1Password returned an empty Cursor token for ${ref}.`), { tokenUnavailable: true });
+  return token;
+}
+
+// The Cursor access token and where it came from, or null when none is configured.
+async function cursorAccessToken({ signal } = {}) {
+  const fromEnv = accessTokenFromEnv();
+  if (fromEnv) return { token: fromEnv, source: "env" };
+  const ref = opTokenRef();
+  if (!ref) return null;
+  if (opTokenCache?.ref !== ref) opTokenCache = { ref, token: await readOpToken(ref, { signal }) };
+  return { token: opTokenCache.token, source: "op" };
+}
+
 function gatewayTokenFromEnv() {
   return (process.env.GROK_BOT_GATEWAY_TOKEN || "").trim();
 }
@@ -68,8 +111,8 @@ function sessionFromApp() {
     loaded = loadGrokBotGatewaySession();
   } catch (error) {
     // Descriptor present but unusable (e.g. Windows Local State missing). Fall
-    // through to CURSOR_ACCESS_TOKEN → EnsureSandBox when that token is set.
-    if (accessTokenFromEnv()) return null;
+    // through to a Cursor token → EnsureSandBox when one is configured.
+    if (hasCursorToken()) return null;
     throw error instanceof Error ? new GatewayError(error.message) : error;
   }
   if (!loaded) return null;
@@ -81,7 +124,7 @@ function sessionFromApp() {
 }
 
 export function hasGatewayAuth() {
-  return Boolean(gatewayOverride() || accessTokenFromEnv() || hasGrokBotGatewaySession());
+  return Boolean(gatewayOverride() || hasCursorToken() || hasGrokBotGatewaySession());
 }
 
 async function readTextCapped(res, maxBytes) {
@@ -126,7 +169,7 @@ function pick(obj, ...keys) {
   return undefined;
 }
 
-async function ensureSandbox(accessToken, { signal } = {}) {
+async function ensureSandbox({ token: accessToken, source }, { signal } = {}) {
   assertGatewayActive(signal);
   const url = assertAllowedCredentialUrl(backendBase(), { kind: "backend" }) + "/aiserver.v1.GrokBotService/EnsureSandBox";
   let res, body;
@@ -144,6 +187,15 @@ async function ensureSandbox(accessToken, { signal } = {}) {
     throw error;
   }
   assertGatewayActive(signal);
+  if (res.status === 401 || res.status === 403) {
+    if (source === "op") opTokenCache = null;
+    const error = new GatewayError(
+      source === "op" ? CURSOR_TOKEN_EXPIRED : "Cursor token expired or invalid: refresh CURSOR_ACCESS_TOKEN",
+      { status: res.status, method: "EnsureSandBox" },
+    );
+    error.expiredToken = true;
+    throw error;
+  }
   if (!res.ok) {
     const detail = body.message || body.error || body.raw || res.statusText;
     throw new GatewayError("EnsureSandBox failed: " + res.status + " " + redactSecrets(detail), { status: res.status, method: "EnsureSandBox" });
@@ -170,11 +222,13 @@ export async function connectGateway({ signal } = {}) {
   if (override) return withOrigin(override, "env");
   const fromApp = sessionFromApp();
   if (fromApp) return withOrigin(fromApp, "app");
-  const token = accessTokenFromEnv();
-  if (!token) {
-    throw new GatewayError("Set CURSOR_ACCESS_TOKEN, or GROK_BOT_GATEWAY_URL + GROK_BOT_GATEWAY_TOKEN. Do not use a Cursor dashboard API key.");
+  // An env token starts EnsureSandBox in this same tick, as before; only a 1Password read waits.
+  const fromEnv = accessTokenFromEnv();
+  const cursor = fromEnv ? { token: fromEnv, source: "env" } : await cursorAccessToken({ signal });
+  if (!cursor) {
+    throw new GatewayError("Set CURSOR_ACCESS_TOKEN or GROK_BOT_CURSOR_TOKEN_OP, or GROK_BOT_GATEWAY_URL + GROK_BOT_GATEWAY_TOKEN. Do not use a Cursor dashboard API key.");
   }
-  return withOrigin(await ensureSandbox(token, { signal }), "ensure");
+  return withOrigin(await ensureSandbox(cursor, { signal }), "ensure");
 }
 
 // Retry window for a sleeping or unreachable box. GROK_BOT_GATEWAY_RETRY_MS=0 turns retries off.
@@ -235,17 +289,22 @@ function sameSession(a, b) {
 async function wakeGateway(session, state, { signal }) {
   const origin = sessionOrigins.get(session);
   if (origin === "env") return "kept the fixed GROK_BOT_GATEWAY_URL login";
-  const accessToken = accessTokenFromEnv();
-  if (accessToken && Date.now() - state.lastEnsureAt >= ENSURE_SANDBOX_SPACING_MS) {
+  if (hasCursorToken() && Date.now() - state.lastEnsureAt >= ENSURE_SANDBOX_SPACING_MS) {
     state.lastEnsureAt = Date.now();
     try {
-      const fresh = await ensureSandbox(accessToken, { signal });
+      const fresh = await ensureSandbox(await cursorAccessToken({ signal }), { signal });
       Object.assign(session, fresh);
       return "asked Cursor to wake the box (EnsureSandBox)";
     } catch (error) {
       assertGatewayActive(signal);
+      const message = redactSecrets(error instanceof Error ? error.message : String(error));
+      // A missing or expired token will not fix itself inside the retry window.
+      if (error?.expiredToken || error?.tokenUnavailable) {
+        state.fatal = message;
+        return message;
+      }
       logGatewayFailure({ method: "EnsureSandBox", status: error?.status, code: networkCode(error), attempt: 1, retrying: false, elapsedMs: Date.now() - state.lastEnsureAt });
-      return "EnsureSandBox failed: " + redactSecrets(error instanceof Error ? error.message : String(error));
+      return "EnsureSandBox failed: " + message;
     }
   }
   if (origin === "app") {
@@ -270,10 +329,10 @@ function formatDuration(ms) {
 }
 
 function wakeHint(session) {
-  if (accessTokenFromEnv()) return "";
+  if (hasCursorToken()) return "";
   return sessionOrigins.get(session) === "env"
     ? " Wake the box from the Grok Bot app, then try again."
-    : " gbot cannot wake the box without CURSOR_ACCESS_TOKEN; opening the Grok Bot app wakes it.";
+    : " gbot cannot wake the box without CURSOR_ACCESS_TOKEN or GROK_BOT_CURSOR_TOKEN_OP; opening the Grok Bot app wakes it.";
 }
 
 async function gatewayCall(session, method, body = {}, { signal } = {}) {
@@ -310,6 +369,11 @@ async function gatewayCall(session, method, body = {}, { signal } = {}) {
         assertGatewayActive(signal);
       }
       tried.add(await wakeGateway(session, state, { signal }));
+      if (state.fatal) {
+        const fatal = new GatewayError(`${method} failed: ${failure.summary}. Could not wake the box: ${state.fatal}`, { status: error?.status, method });
+        fatal.attempts = attempt;
+        throw fatal;
+      }
     }
   }
 }

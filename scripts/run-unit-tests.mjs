@@ -33,12 +33,14 @@ const files = readdirSync(dir)
     }
     return true;
   });
+// Loopback-only credential URLs (src/core/url-policy.js testMode): a test can never reach a live gateway.
+// Retries and the failure log are off unless a test turns them on: a mocked outage must fail
+// fast, and must not write to the real ~/.grok-bot-cli. Tests never reach the real 1Password.
+const env = { ...process.env, GROK_BOT_TEST: "1", GROK_BOT_GATEWAY_RETRY_MS: process.env.GROK_BOT_GATEWAY_RETRY_MS ?? "0", GROK_BOT_FAILURE_LOG: process.env.GROK_BOT_FAILURE_LOG ?? "off" };
+delete env.GROK_BOT_CURSOR_TOKEN_OP;
 const result = spawnSync(process.execPath, ["--test", ...files], {
   cwd: root,
-  // Loopback-only credential URLs (src/core/url-policy.js testMode): a test can never reach a live gateway.
-  // Retries and the failure log are off unless a test turns them on: a mocked outage must fail
-  // fast, and must not write to the real ~/.grok-bot-cli.
-  env: { ...process.env, GROK_BOT_TEST: "1", GROK_BOT_GATEWAY_RETRY_MS: process.env.GROK_BOT_GATEWAY_RETRY_MS ?? "0", GROK_BOT_FAILURE_LOG: process.env.GROK_BOT_FAILURE_LOG ?? "off" },
+  env,
   stdio: "inherit",
 });
 process.exit(result.status === null ? 1 : result.status);
