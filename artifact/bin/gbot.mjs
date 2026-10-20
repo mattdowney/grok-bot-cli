@@ -44320,6 +44320,14 @@ var __webpack_modules__ = {
         function grokBotGatewayDescriptorPath(home = (0, node_os__rspack_import_3.homedir)(), platform = process.platform, env = process.env) {
             return (0, node_path__rspack_import_4.join)(grokBotAppDataPath(home, platform, env), "gateway-descriptor.json");
         }
+        function grokBotAppVersion({ home = (0, node_os__rspack_import_3.homedir)(), platform = process.platform, env = process.env } = {}) {
+            try {
+                const status = JSON.parse((0, node_fs__rspack_import_2.readFileSync)((0, node_path__rspack_import_4.join)(grokBotAppDataPath(home, platform, env), "desktop-status.json"), "utf8"));
+                return typeof status?.appVersion === "string" && /^\d+\.\d+\.\d+$/.test(status.appVersion) ? status.appVersion : null;
+            } catch  {
+                return null;
+            }
+        }
         function sessionEnv({ env = process.env, appData } = {}) {
             if (appData !== undefined) return {
                 ...env,
@@ -44427,6 +44435,7 @@ var __webpack_modules__ = {
             }
         }
         __webpack_require__.d(__webpack_exports__, {
+            AO: ()=>grokBotAppVersion,
             Z2: ()=>loadGrokBotGatewaySession,
             ZN: ()=>hasGrokBotGatewaySession,
             dQ: ()=>grokBotGatewayDescriptorPath,
@@ -47822,11 +47831,11 @@ ts() { date -u +%Y-%m-%dT%H:%M:%SZ; }
     },
     "./src/core/gateway.js" (__unused_rspack___webpack_module__, __webpack_exports__, __webpack_require__) {
         var node_crypto__rspack_import_0 = __webpack_require__("node:crypto");
-        var _headers_js__rspack_import_5 = __webpack_require__("./src/core/headers.js");
-        var _app_session_js__rspack_import_1 = __webpack_require__("./src/core/app-session.js");
-        var _store_js__rspack_import_2 = __webpack_require__("./src/core/store.js");
-        var _url_policy_js__rspack_import_3 = __webpack_require__("./src/core/url-policy.js");
-        var _grok_approvals_js__rspack_import_4 = __webpack_require__("./src/core/grok-approvals.js");
+        var _headers_js__rspack_import_1 = __webpack_require__("./src/core/headers.js");
+        var _app_session_js__rspack_import_2 = __webpack_require__("./src/core/app-session.js");
+        var _store_js__rspack_import_3 = __webpack_require__("./src/core/store.js");
+        var _url_policy_js__rspack_import_4 = __webpack_require__("./src/core/url-policy.js");
+        var _grok_approvals_js__rspack_import_5 = __webpack_require__("./src/core/grok-approvals.js");
         class GatewayError extends Error {
             constructor(message, { status, method } = {}){
                 super(message);
@@ -47866,11 +47875,11 @@ ts() { date -u +%Y-%m-%dT%H:%M:%SZ; }
             const url = (process.env.GROK_BOT_GATEWAY_URL || "").trim();
             if (url && token) {
                 return {
-                    gatewayUrl: (0, _url_policy_js__rspack_import_3.Re)(url.replace(/\/$/, ""), {
+                    gatewayUrl: (0, _url_policy_js__rspack_import_4.Re)(url.replace(/\/$/, ""), {
                         kind: "gateway"
                     }),
                     gatewayToken: token,
-                    gatewayHeaders: (0, _headers_js__rspack_import_5.gx)()
+                    gatewayHeaders: (0, _headers_js__rspack_import_1.gx)()
                 };
             }
             return null;
@@ -47878,22 +47887,22 @@ ts() { date -u +%Y-%m-%dT%H:%M:%SZ; }
         function sessionFromApp() {
             let loaded;
             try {
-                loaded = (0, _app_session_js__rspack_import_1.Z2)();
+                loaded = (0, _app_session_js__rspack_import_2.Z2)();
             } catch (error) {
                 if (accessTokenFromEnv()) return null;
                 throw error instanceof Error ? new GatewayError(error.message) : error;
             }
             if (!loaded) return null;
             return {
-                gatewayUrl: (0, _url_policy_js__rspack_import_3.Re)(loaded.gatewayUrl, {
+                gatewayUrl: (0, _url_policy_js__rspack_import_4.Re)(loaded.gatewayUrl, {
                     kind: "gateway"
                 }),
                 gatewayToken: loaded.gatewayToken,
-                gatewayHeaders: (0, _headers_js__rspack_import_5.bQ)((0, _headers_js__rspack_import_5.dk)(loaded.headers), (0, _headers_js__rspack_import_5.gx)())
+                gatewayHeaders: (0, _headers_js__rspack_import_1.bQ)((0, _headers_js__rspack_import_1.dk)(loaded.headers), (0, _headers_js__rspack_import_1.gx)())
             };
         }
         function hasGatewayAuth() {
-            return Boolean(gatewayOverride() || accessTokenFromEnv() || (0, _app_session_js__rspack_import_1.ZN)());
+            return Boolean(gatewayOverride() || accessTokenFromEnv() || (0, _app_session_js__rspack_import_2.ZN)());
         }
         async function readTextCapped(res, maxBytes) {
             if (!res.body || typeof res.body.getReader !== "function") {
@@ -47940,7 +47949,7 @@ ts() { date -u +%Y-%m-%dT%H:%M:%SZ; }
         }
         async function ensureSandbox(accessToken, { signal } = {}) {
             assertGatewayActive(signal);
-            const url = (0, _url_policy_js__rspack_import_3.Re)(backendBase(), {
+            const url = (0, _url_policy_js__rspack_import_4.Re)(backendBase(), {
                 kind: "backend"
             }) + "/aiserver.v1.GrokBotService/EnsureSandBox";
             let res, body;
@@ -47949,7 +47958,7 @@ ts() { date -u +%Y-%m-%dT%H:%M:%SZ; }
                     method: "POST",
                     redirect: "error",
                     signal: gatewayDeadline(signal),
-                    headers: (0, _headers_js__rspack_import_5._6)(accessToken),
+                    headers: (0, _headers_js__rspack_import_1._6)(accessToken),
                     body: "{}"
                 });
                 body = await readJson(res);
@@ -47960,7 +47969,7 @@ ts() { date -u +%Y-%m-%dT%H:%M:%SZ; }
             assertGatewayActive(signal);
             if (!res.ok) {
                 const detail = body.message || body.error || body.raw || res.statusText;
-                throw new GatewayError("EnsureSandBox failed: " + res.status + " " + (0, _url_policy_js__rspack_import_3.fp)(detail), {
+                throw new GatewayError("EnsureSandBox failed: " + res.status + " " + (0, _url_policy_js__rspack_import_4.fp)(detail), {
                     status: res.status,
                     method: "EnsureSandBox"
                 });
@@ -47971,11 +47980,11 @@ ts() { date -u +%Y-%m-%dT%H:%M:%SZ; }
                 throw new GatewayError("EnsureSandBox returned no gatewayUrl/gatewayToken. Auth may be a dashboard API key (those do not work).");
             }
             return {
-                gatewayUrl: (0, _url_policy_js__rspack_import_3.Re)(String(gatewayUrl).replace(/\/$/, ""), {
+                gatewayUrl: (0, _url_policy_js__rspack_import_4.Re)(String(gatewayUrl).replace(/\/$/, ""), {
                     kind: "gateway"
                 }),
                 gatewayToken: String(gatewayToken),
-                gatewayHeaders: (0, _headers_js__rspack_import_5.bQ)((0, _headers_js__rspack_import_5.Ew)(body), (0, _headers_js__rspack_import_5.gx)())
+                gatewayHeaders: (0, _headers_js__rspack_import_1.bQ)((0, _headers_js__rspack_import_1.Ew)(body), (0, _headers_js__rspack_import_1.gx)())
             };
         }
         async function connectGateway({ signal } = {}) {
@@ -47994,7 +48003,7 @@ ts() { date -u +%Y-%m-%dT%H:%M:%SZ; }
         }
         async function gatewayCall(session, method, body = {}, { signal } = {}) {
             assertGatewayActive(signal);
-            const base = (0, _url_policy_js__rspack_import_3.Re)(session.gatewayUrl, {
+            const base = (0, _url_policy_js__rspack_import_4.Re)(session.gatewayUrl, {
                 kind: "gateway"
             });
             const url = base + "/api/" + method;
@@ -48003,7 +48012,7 @@ ts() { date -u +%Y-%m-%dT%H:%M:%SZ; }
                 method: "POST",
                 redirect: "error",
                 signal: gatewayDeadline(prompt ? undefined : signal),
-                headers: (0, _headers_js__rspack_import_5.A1)(session),
+                headers: (0, _headers_js__rspack_import_1.A1)(session),
                 body: JSON.stringify(body)
             };
             assertGatewayActive(signal);
@@ -48018,7 +48027,7 @@ ts() { date -u +%Y-%m-%dT%H:%M:%SZ; }
             if (!prompt) assertGatewayActive(signal);
             if (!res.ok) {
                 const detail = data.message || data.error || data.raw || res.statusText;
-                throw new GatewayError(method + " failed: " + res.status + " " + (0, _url_policy_js__rspack_import_3.fp)(String(detail).slice(0, 300)), {
+                throw new GatewayError(method + " failed: " + res.status + " " + (0, _url_policy_js__rspack_import_4.fp)(String(detail).slice(0, 300)), {
                     status: res.status,
                     method
                 });
@@ -48092,8 +48101,8 @@ ts() { date -u +%Y-%m-%dT%H:%M:%SZ; }
                 name: input.name,
                 description: input.description || "",
                 title: input.title || "",
-                avatarShape: assertAvatar("shape", input.avatarShape, _store_js__rspack_import_2.Jb),
-                avatarColor: assertAvatar("color", input.avatarColor, _store_js__rspack_import_2.T7),
+                avatarShape: assertAvatar("shape", input.avatarShape, _store_js__rspack_import_3.Jb),
+                avatarColor: assertAvatar("color", input.avatarColor, _store_js__rspack_import_3.T7),
                 origin: "user"
             });
             return unwrapOne(data);
@@ -48108,8 +48117,8 @@ ts() { date -u +%Y-%m-%dT%H:%M:%SZ; }
                 description: patch.description !== undefined ? String(patch.description) : rec.description
             };
             if (patch.title !== undefined) profile.title = String(patch.title);
-            if (patch.avatarShape !== undefined) profile.avatarShape = assertAvatar("shape", patch.avatarShape, _store_js__rspack_import_2.Jb);
-            if (patch.avatarColor !== undefined) profile.avatarColor = assertAvatar("color", patch.avatarColor, _store_js__rspack_import_2.T7);
+            if (patch.avatarShape !== undefined) profile.avatarShape = assertAvatar("shape", patch.avatarShape, _store_js__rspack_import_3.Jb);
+            if (patch.avatarColor !== undefined) profile.avatarColor = assertAvatar("color", patch.avatarColor, _store_js__rspack_import_3.T7);
             await gatewayCall(session, "updateAgent", {
                 id: rec.id,
                 profile
@@ -48354,12 +48363,12 @@ ts() { date -u +%Y-%m-%dT%H:%M:%SZ; }
                     id: target.id,
                     name: target.name
                 },
-                approvals: transcript.entries.map(_grok_approvals_js__rspack_import_4.Ny).filter(Boolean),
+                approvals: transcript.entries.map(_grok_approvals_js__rspack_import_5.Ny).filter(Boolean),
                 coverage: "Latest 200 transcript entries only; older requests require the owning Grok UI."
             };
         }
         async function respondGrokApproval(session, ref, input) {
-            const { entryId, requestId, decision } = _grok_approvals_js__rspack_import_4.T5.parse({
+            const { entryId, requestId, decision } = _grok_approvals_js__rspack_import_5.T5.parse({
                 ...input,
                 target: ref
             });
@@ -48463,6 +48472,8 @@ ts() { date -u +%Y-%m-%dT%H:%M:%SZ; }
         });
     },
     "./src/core/headers.js" (__unused_rspack___webpack_module__, __webpack_exports__, __webpack_require__) {
+        var _app_session_js__rspack_import_0 = __webpack_require__("./src/core/app-session.js");
+        const DEFAULT_SAND_CLIENT_VERSION = "0.72.0";
         function normalizeHeaderMap(obj) {
             if (!obj || typeof obj !== "object" || Array.isArray(obj)) return {};
             const out = {};
@@ -48511,7 +48522,7 @@ ts() { date -u +%Y-%m-%dT%H:%M:%SZ; }
                 "connect-protocol-version": "1",
                 authorization: "Bearer " + accessToken,
                 "x-cursor-client-type": "sand",
-                "x-cursor-client-version": process.env.SAND_CLIENT_VERSION || "0.20.0",
+                "x-cursor-client-version": process.env.SAND_CLIENT_VERSION || (0, _app_session_js__rspack_import_0.AO)() || DEFAULT_SAND_CLIENT_VERSION,
                 "x-sand-box-namespace": process.env.SAND_BOX_NAMESPACE || "prod"
             };
         }
