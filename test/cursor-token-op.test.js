@@ -140,3 +140,14 @@ test("GROK_BOT_CURSOR_TOKEN_OP must be an op:// reference", { skip }, async (t) 
   await assert.rejects(connectGateway(), /must be an op:\/\/vault\/item\/field reference/);
   assert.deepEqual(op.calls(), [], "op is not run for a bad reference");
 });
+
+test("a 401 for an unsupported client version is not reported as an expired token", { skip }, async (t) => {
+  await setup(t);
+  t.mock.method(globalThis, "fetch", async () => new Response(JSON.stringify({ code: "unauthenticated", message: "This version of Grok Bot is no longer supported. Update Grok Bot from cursor.com/sand to continue." }), { status: 401 }));
+  await assert.rejects(connectGateway(), (e) => {
+    assert.match(e.message, /^Cursor refused gbot's client version [\d.]+: This version of Grok Bot is no longer supported\./);
+    assert.match(e.message, /SAND_CLIENT_VERSION/);
+    assert.doesNotMatch(e.message, /expired/);
+    return true;
+  });
+});

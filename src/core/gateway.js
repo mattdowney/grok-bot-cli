@@ -63,7 +63,7 @@ function hasCursorToken() {
 
 async function readOpToken(ref, { signal } = {}) {
   if (!/^op:\/\/[^/]+\/[^/]+\/[^/]+/.test(ref)) {
-    throw Object.assign(new GatewayError("GROK_BOT_CURSOR_TOKEN_OP must be an op://vault/item/field reference."), { tokenUnavailable: true });
+    throw Object.assign(new GatewayError("GROK_BOT_CURSOR_TOKEN_OP must be an op://vault/item/field reference."), { wakeBlocked: true });
   }
   let stdout;
   try {
@@ -71,10 +71,10 @@ async function readOpToken(ref, { signal } = {}) {
   } catch (error) {
     assertGatewayActive(signal);
     const detail = String(error?.stderr || error?.code || "failed").trim().split("\n")[0].slice(0, 200);
-    throw Object.assign(new GatewayError(`Could not read the Cursor token from 1Password (op read ${ref}: ${redactSecrets(detail)}).`), { tokenUnavailable: true });
+    throw Object.assign(new GatewayError(`Could not read the Cursor token from 1Password (op read ${ref}: ${redactSecrets(detail)}).`), { wakeBlocked: true });
   }
   const token = stdout.trim();
-  if (!token) throw Object.assign(new GatewayError(`1Password returned an empty Cursor token for ${ref}.`), { tokenUnavailable: true });
+  if (!token) throw Object.assign(new GatewayError(`1Password returned an empty Cursor token for ${ref}.`), { wakeBlocked: true });
   return token;
 }
 
@@ -187,17 +187,24 @@ async function ensureSandbox({ token: accessToken, source }, { signal } = {}) {
     throw error;
   }
   assertGatewayActive(signal);
+  const detail = String(body.message || body.error || body.raw || res.statusText);
+  // Cursor answers 401 both for a bad token and for a client version it no longer serves.
+  if ((res.status === 401 || res.status === 403) && /no longer supported|update/i.test(detail)) {
+    throw Object.assign(new GatewayError(
+      `Cursor refused gbot's client version ${ensureSandboxHeaders(accessToken)["x-cursor-client-version"]}: ${redactSecrets(detail)} Set SAND_CLIENT_VERSION to the Grok Bot app's version.`,
+      { status: res.status, method: "EnsureSandBox" },
+    ), { wakeBlocked: true });
+  }
   if (res.status === 401 || res.status === 403) {
     if (source === "op") opTokenCache = null;
     const error = new GatewayError(
       source === "op" ? CURSOR_TOKEN_EXPIRED : "Cursor token expired or invalid: refresh CURSOR_ACCESS_TOKEN",
       { status: res.status, method: "EnsureSandBox" },
     );
-    error.expiredToken = true;
+    error.wakeBlocked = true;
     throw error;
   }
   if (!res.ok) {
-    const detail = body.message || body.error || body.raw || res.statusText;
     throw new GatewayError("EnsureSandBox failed: " + res.status + " " + redactSecrets(detail), { status: res.status, method: "EnsureSandBox" });
   }
   const gatewayUrl = pick(body, "gatewayUrl", "gateway_url");
@@ -298,8 +305,8 @@ async function wakeGateway(session, state, { signal }) {
     } catch (error) {
       assertGatewayActive(signal);
       const message = redactSecrets(error instanceof Error ? error.message : String(error));
-      // A missing or expired token will not fix itself inside the retry window.
-      if (error?.expiredToken || error?.tokenUnavailable) {
+      // A missing or expired token, or a refused client version, will not fix itself inside the retry window.
+      if (error?.wakeBlocked) {
         state.fatal = message;
         return message;
       }
