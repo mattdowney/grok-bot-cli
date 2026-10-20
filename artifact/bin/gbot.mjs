@@ -9249,6 +9249,63 @@ var __webpack_modules__ = {
             resultSchema: resultSchema
         });
     },
+    "./src/cli/health.tsx" (__unused_rspack_module, __webpack_exports__, __webpack_require__) {
+        __webpack_require__.r(__webpack_exports__);
+        var react_jsx_runtime__rspack_import_0 = __webpack_require__("./node_modules/react/jsx-runtime.js");
+        var _agent_bundle_runtime__rspack_import_3 = __webpack_require__("./node_modules/@agent-bundle/runtime/dist/506.js");
+        var zod__rspack_import_2 = __webpack_require__("./node_modules/zod/v4/classic/schemas.js");
+        var _core_gateway_js__rspack_import_1 = __webpack_require__("./src/core/gateway.js");
+        const config = {
+            description: 'Make one live read call to the Grok Bot gateway; exit 1 with the reason when it fails.',
+            exitCode: 'result',
+            inputJsonSchema: {
+                additionalProperties: false,
+                properties: {},
+                type: 'object'
+            }
+        };
+        const inputSchema = zod__rspack_import_2.Ikc({}).strict();
+        const resultSchema = zod__rspack_import_2.Ikc({
+            bots: zod__rspack_import_2.aig().int().optional(),
+            error: zod__rspack_import_2.YjP().optional(),
+            exitCode: zod__rspack_import_2.KCZ([
+                zod__rspack_import_2.euz(0),
+                zod__rspack_import_2.euz(1)
+            ]),
+            groups: zod__rspack_import_2.aig().int().optional(),
+            hint: zod__rspack_import_2.YjP().optional(),
+            latencyMs: zod__rspack_import_2.aig(),
+            method: zod__rspack_import_2.YjP(),
+            ok: zod__rspack_import_2.zMY(),
+            reason: zod__rspack_import_2.YjP().optional(),
+            status: zod__rspack_import_2.aig().int().optional()
+        }).strict();
+        async function health() {
+            const result = await (0, _core_gateway_js__rspack_import_1.Jm)();
+            const value = resultSchema.parse({
+                ...result,
+                exitCode: result.ok ? 0 : 1
+            });
+            const text = value.ok ? `gateway ok: ${value.method} answered in ${value.latencyMs} ms (${value.bots} bots, ${value.groups} groups)` : [
+                `gateway failed: ${value.reason}`,
+                value.error,
+                value.hint
+            ].filter(Boolean).join('\n');
+            return (0, react_jsx_runtime__rspack_import_0.jsx)(_agent_bundle_runtime__rspack_import_3.g.Result, {
+                value: value,
+                children: (0, react_jsx_runtime__rspack_import_0.jsx)(_agent_bundle_runtime__rspack_import_3.g.Text, {
+                    children: text
+                })
+            });
+        }
+        __webpack_require__.d(__webpack_exports__, {
+            "default": ()=>health
+        }, {
+            config: config,
+            inputSchema: inputSchema,
+            resultSchema: resultSchema
+        });
+    },
     "./src/cli/history.tsx" (__unused_rspack_module, __webpack_exports__, __webpack_require__) {
         __webpack_require__.r(__webpack_exports__);
         var react_jsx_runtime__rspack_import_0 = __webpack_require__("./node_modules/react/jsx-runtime.js");
@@ -41391,9 +41448,9 @@ var __webpack_modules__ = {
             try {
                 var agent_bundle_launch_env_layer__rspack_import_0 = __webpack_require__("./.agent-bundle-virtual/bin-gbot-0.mjs");
                 var agent_bundle_cli_entry__rspack_import_1 = __webpack_require__("./node_modules/agent-bundle/dist/cli-entry.js");
-                var _agent_bundle_runtime__rspack_import_47 = __webpack_require__("./node_modules/@agent-bundle/runtime/dist/49.js");
-                var _agent_bundle_runtime__rspack_import_48 = __webpack_require__("./node_modules/@agent-bundle/runtime/dist/736.js");
-                var _agent_bundle_runtime__rspack_import_49 = __webpack_require__("./node_modules/@agent-bundle/runtime/dist/index.js");
+                var _agent_bundle_runtime__rspack_import_48 = __webpack_require__("./node_modules/@agent-bundle/runtime/dist/49.js");
+                var _agent_bundle_runtime__rspack_import_49 = __webpack_require__("./node_modules/@agent-bundle/runtime/dist/736.js");
+                var _agent_bundle_runtime__rspack_import_50 = __webpack_require__("./node_modules/@agent-bundle/runtime/dist/index.js");
                 var node_url__rspack_import_2 = __webpack_require__("node:url");
                 var node_worker_threads__rspack_import_3 = __webpack_require__("node:worker_threads");
                 var _src_cli_approvals_list_tsx__rspack_import_4 = __webpack_require__("./src/cli/approvals/list.tsx");
@@ -41433,12 +41490,13 @@ var __webpack_modules__ = {
                 var _src_cli_groups_remove_tsx__rspack_import_38 = __webpack_require__("./src/cli/groups/remove.tsx");
                 var _src_cli_groups_set_tsx__rspack_import_39 = __webpack_require__("./src/cli/groups/set.tsx");
                 var _src_cli_groups_update_tsx__rspack_import_40 = __webpack_require__("./src/cli/groups/update.tsx");
-                var _src_cli_history_tsx__rspack_import_41 = __webpack_require__("./src/cli/history.tsx");
-                var _src_cli_send_tsx__rspack_import_42 = __webpack_require__("./src/cli/send.tsx");
-                var _src_cli_skills_add_tsx__rspack_import_43 = __webpack_require__("./src/cli/skills/add.tsx");
-                var _src_cli_skills_list_tsx__rspack_import_44 = __webpack_require__("./src/cli/skills/list.tsx");
-                var _src_cli_skills_remove_tsx__rspack_import_45 = __webpack_require__("./src/cli/skills/remove.tsx");
-                var _src_cli_thread_tsx__rspack_import_46 = __webpack_require__("./src/cli/thread.tsx");
+                var _src_cli_health_tsx__rspack_import_41 = __webpack_require__("./src/cli/health.tsx");
+                var _src_cli_history_tsx__rspack_import_42 = __webpack_require__("./src/cli/history.tsx");
+                var _src_cli_send_tsx__rspack_import_43 = __webpack_require__("./src/cli/send.tsx");
+                var _src_cli_skills_add_tsx__rspack_import_44 = __webpack_require__("./src/cli/skills/add.tsx");
+                var _src_cli_skills_list_tsx__rspack_import_45 = __webpack_require__("./src/cli/skills/list.tsx");
+                var _src_cli_skills_remove_tsx__rspack_import_46 = __webpack_require__("./src/cli/skills/remove.tsx");
+                var _src_cli_thread_tsx__rspack_import_47 = __webpack_require__("./src/cli/thread.tsx");
                 const route0 = Object.assign({}, Reflect.get(_src_cli_approvals_list_tsx__rspack_import_4, 'default'), _src_cli_approvals_list_tsx__rspack_import_4);
                 const route1 = Object.assign({}, Reflect.get(_src_cli_approvals_respond_tsx__rspack_import_5, 'default'), _src_cli_approvals_respond_tsx__rspack_import_5);
                 const route2 = Object.assign({}, Reflect.get(_src_cli_bots_create_tsx__rspack_import_6, 'default'), _src_cli_bots_create_tsx__rspack_import_6);
@@ -41476,13 +41534,14 @@ var __webpack_modules__ = {
                 const route34 = Object.assign({}, Reflect.get(_src_cli_groups_remove_tsx__rspack_import_38, 'default'), _src_cli_groups_remove_tsx__rspack_import_38);
                 const route35 = Object.assign({}, Reflect.get(_src_cli_groups_set_tsx__rspack_import_39, 'default'), _src_cli_groups_set_tsx__rspack_import_39);
                 const route36 = Object.assign({}, Reflect.get(_src_cli_groups_update_tsx__rspack_import_40, 'default'), _src_cli_groups_update_tsx__rspack_import_40);
-                const route37 = Object.assign({}, Reflect.get(_src_cli_history_tsx__rspack_import_41, 'default'), _src_cli_history_tsx__rspack_import_41);
-                const route38 = Object.assign({}, Reflect.get(_src_cli_send_tsx__rspack_import_42, 'default'), _src_cli_send_tsx__rspack_import_42);
-                const route39 = Object.assign({}, Reflect.get(_src_cli_skills_add_tsx__rspack_import_43, 'default'), _src_cli_skills_add_tsx__rspack_import_43);
-                const route40 = Object.assign({}, Reflect.get(_src_cli_skills_list_tsx__rspack_import_44, 'default'), _src_cli_skills_list_tsx__rspack_import_44);
-                const route41 = Object.assign({}, Reflect.get(_src_cli_skills_remove_tsx__rspack_import_45, 'default'), _src_cli_skills_remove_tsx__rspack_import_45);
-                const route42 = Object.assign({}, Reflect.get(_src_cli_thread_tsx__rspack_import_46, 'default'), _src_cli_thread_tsx__rspack_import_46);
-                const pluginRoot = (0, _agent_bundle_runtime__rspack_import_47.E7)({
+                const route37 = Object.assign({}, Reflect.get(_src_cli_health_tsx__rspack_import_41, 'default'), _src_cli_health_tsx__rspack_import_41);
+                const route38 = Object.assign({}, Reflect.get(_src_cli_history_tsx__rspack_import_42, 'default'), _src_cli_history_tsx__rspack_import_42);
+                const route39 = Object.assign({}, Reflect.get(_src_cli_send_tsx__rspack_import_43, 'default'), _src_cli_send_tsx__rspack_import_43);
+                const route40 = Object.assign({}, Reflect.get(_src_cli_skills_add_tsx__rspack_import_44, 'default'), _src_cli_skills_add_tsx__rspack_import_44);
+                const route41 = Object.assign({}, Reflect.get(_src_cli_skills_list_tsx__rspack_import_45, 'default'), _src_cli_skills_list_tsx__rspack_import_45);
+                const route42 = Object.assign({}, Reflect.get(_src_cli_skills_remove_tsx__rspack_import_46, 'default'), _src_cli_skills_remove_tsx__rspack_import_46);
+                const route43 = Object.assign({}, Reflect.get(_src_cli_thread_tsx__rspack_import_47, 'default'), _src_cli_thread_tsx__rspack_import_47);
+                const pluginRoot = (0, _agent_bundle_runtime__rspack_import_48.E7)({
                     fallback: (0, node_url__rspack_import_2.fileURLToPath)(new URL('..', import.meta.url)),
                     stateAnchor: 'user-data'
                 });
@@ -41603,23 +41662,26 @@ var __webpack_modules__ = {
                     "cli:groups/update": Object.freeze({
                         module: route36
                     }),
-                    "cli:history": Object.freeze({
+                    "cli:health": Object.freeze({
                         module: route37
                     }),
-                    "cli:send": Object.freeze({
+                    "cli:history": Object.freeze({
                         module: route38
                     }),
-                    "cli:skills/add": Object.freeze({
+                    "cli:send": Object.freeze({
                         module: route39
                     }),
-                    "cli:skills/list": Object.freeze({
+                    "cli:skills/add": Object.freeze({
                         module: route40
                     }),
-                    "cli:skills/remove": Object.freeze({
+                    "cli:skills/list": Object.freeze({
                         module: route41
                     }),
-                    "cli:thread": Object.freeze({
+                    "cli:skills/remove": Object.freeze({
                         module: route42
+                    }),
+                    "cli:thread": Object.freeze({
+                        module: route43
                     })
                 });
                 const commands = Object.freeze([
@@ -43599,6 +43661,17 @@ var __webpack_modules__ = {
                     },
                     {
                         "aliases": [],
+                        "description": "Make one live read call to the Grok Bot gateway; exit 1 with the reason when it fails.",
+                        "exitCode": "result",
+                        "options": [],
+                        "path": [
+                            "health"
+                        ],
+                        "rendered": true,
+                        "routeId": "cli:health"
+                    },
+                    {
+                        "aliases": [],
                         "description": "Read the opt-in local JSONL history without contacting the gateway.",
                         "exitCode": "zero",
                         "options": [
@@ -44047,27 +44120,27 @@ var __webpack_modules__ = {
                         instanceId: processLifetime.instanceId,
                         pid: processLifetime.pid
                     };
-                    const result = await (0, _agent_bundle_runtime__rspack_import_48.iC)({
+                    const result = await (0, _agent_bundle_runtime__rspack_import_49.iC)({
                         capabilities: {
-                            command: (0, _agent_bundle_runtime__rspack_import_48.hU)(),
-                            filesystem: (0, _agent_bundle_runtime__rspack_import_48.hU)(),
-                            network: (0, _agent_bundle_runtime__rspack_import_48.hU)(),
-                            projectRoot: (0, _agent_bundle_runtime__rspack_import_48.qC)({
+                            command: (0, _agent_bundle_runtime__rspack_import_49.hU)(),
+                            filesystem: (0, _agent_bundle_runtime__rspack_import_49.hU)(),
+                            network: (0, _agent_bundle_runtime__rspack_import_49.hU)(),
+                            projectRoot: (0, _agent_bundle_runtime__rspack_import_49.qC)({
                                 root: cwd
                             }, 'derived')
                         },
-                        host: (0, _agent_bundle_runtime__rspack_import_48.hU)('unsupported-surface'),
+                        host: (0, _agent_bundle_runtime__rspack_import_49.hU)('unsupported-surface'),
                         invocation: {
                             kind: 'cli',
                             operationId: command.routeId,
                             surface: command.path.join(' ')
                         },
-                        lineage: (0, _agent_bundle_runtime__rspack_import_48.hU)('unsupported-surface'),
+                        lineage: (0, _agent_bundle_runtime__rspack_import_49.hU)('unsupported-surface'),
                         plugin: pluginRoot.identity,
                         process: processHit,
                         signal: context.signal,
-                        terminal: (0, _agent_bundle_runtime__rspack_import_48.qC)(context.terminal, 'native'),
-                        workspace: (0, _agent_bundle_runtime__rspack_import_48.qC)({
+                        terminal: (0, _agent_bundle_runtime__rspack_import_49.qC)(context.terminal, 'native'),
+                        workspace: (0, _agent_bundle_runtime__rspack_import_49.qC)({
                             root: cwd
                         }, 'derived')
                     }, async ()=>route.module.default({
@@ -44174,7 +44247,7 @@ var __webpack_modules__ = {
                             return stream;
                         }
                     });
-                    const dispatcher = (0, _agent_bundle_runtime__rspack_import_49.jK)(host);
+                    const dispatcher = (0, _agent_bundle_runtime__rspack_import_50.jK)(host);
                     return Object.freeze({
                         close: async ()=>{
                             await worker.terminate();
@@ -48220,6 +48293,52 @@ ts() { date -u +%Y-%m-%dT%H:%M:%SZ; }
                 }
             }
         }
+        async function checkGatewayHealth({ signal } = {}) {
+            const started = Date.now();
+            let session;
+            try {
+                session = await connectGateway({
+                    signal
+                });
+                const agents = unwrapList(await gatewayCallOnce(session, "listAgents", {}, {
+                    signal
+                })).map(asRecord).filter((r)=>r && r.id);
+                return {
+                    ok: true,
+                    method: "listAgents",
+                    latencyMs: Date.now() - started,
+                    bots: agents.filter((r)=>!r.isGroup).length,
+                    groups: agents.filter((r)=>r.isGroup).length
+                };
+            } catch (error) {
+                assertGatewayActive(signal);
+                const failure = classifyGatewayFailure(error);
+                if (session && (error?.status != null || failure.delivered !== null)) {
+                    (0, _failure_log_js__rspack_import_3.$)({
+                        method: "listAgents",
+                        status: error?.status,
+                        code: networkCode(error),
+                        attempt: 1,
+                        retrying: false,
+                        elapsedMs: Date.now() - started
+                    });
+                }
+                const message = (0, _url_policy_js__rspack_import_5.fp)(error instanceof Error ? error.message : String(error));
+                return {
+                    ok: false,
+                    method: session ? "listAgents" : "connect",
+                    latencyMs: Date.now() - started,
+                    ...error?.status != null ? {
+                        status: error.status
+                    } : {},
+                    reason: session ? failure.summary : "could not load a gateway login",
+                    error: message,
+                    ...failure.delivered === false || failure.delivered === "maybe" ? {
+                        hint: wakeHint(session ?? {}).trim() || "Try again in a minute."
+                    } : {}
+                };
+            }
+        }
         async function gatewayCallOnce(session, method, body = {}, { signal } = {}) {
             assertGatewayActive(signal);
             const base = (0, _url_policy_js__rspack_import_5.Re)(session.gatewayUrl, {
@@ -48613,6 +48732,7 @@ ts() { date -u +%Y-%m-%dT%H:%M:%SZ; }
         }
         __webpack_require__.d(__webpack_exports__, {
             A0: ()=>removeGroupMember,
+            Jm: ()=>checkGatewayHealth,
             L5: ()=>addSkill,
             LV: ()=>sendPrompt,
             MI: ()=>listGrokApprovals,

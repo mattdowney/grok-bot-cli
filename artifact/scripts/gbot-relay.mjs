@@ -25064,7 +25064,7 @@ ts() { date -u +%Y-%m-%dT%H:%M:%SZ; }
             if (/^(off|false|0)$/i.test(raw)) return null;
             return raw ? (0, node_path__rspack_import_2.resolve)(raw) : (0, node_path__rspack_import_2.join)((0, node_os__rspack_import_1.homedir)(), ".grok-bot-cli", "gateway-failures.jsonl");
         }
-        function logGatewayFailure({ method, status, code, attempt, retrying, elapsedMs }) {
+        function logGatewayFailure1({ method, status, code, attempt, retrying, elapsedMs }) {
             const path = failureLogPath();
             if (!path) return;
             const row = {
@@ -25092,7 +25092,7 @@ ts() { date -u +%Y-%m-%dT%H:%M:%SZ; }
             } catch  {}
         }
         __webpack_require__.d(__webpack_exports__, {
-            $: ()=>logGatewayFailure
+            $: ()=>logGatewayFailure1
         });
     },
     "./src/core/gateway.js" (__unused_rspack___webpack_module__, __webpack_exports__, __webpack_require__) {
@@ -25449,6 +25449,52 @@ ts() { date -u +%Y-%m-%dT%H:%M:%SZ; }
                         signal
                     }));
                 }
+            }
+        }
+        async function checkGatewayHealth({ signal } = {}) {
+            const started = Date.now();
+            let session;
+            try {
+                session = await connectGateway({
+                    signal
+                });
+                const agents = unwrapList(await gatewayCallOnce(session, "listAgents", {}, {
+                    signal
+                })).map(asRecord).filter((r)=>r && r.id);
+                return {
+                    ok: true,
+                    method: "listAgents",
+                    latencyMs: Date.now() - started,
+                    bots: agents.filter((r)=>!r.isGroup).length,
+                    groups: agents.filter((r)=>r.isGroup).length
+                };
+            } catch (error) {
+                assertGatewayActive(signal);
+                const failure = classifyGatewayFailure(error);
+                if (session && (error?.status != null || failure.delivered !== null)) {
+                    logGatewayFailure({
+                        method: "listAgents",
+                        status: error?.status,
+                        code: networkCode(error),
+                        attempt: 1,
+                        retrying: false,
+                        elapsedMs: Date.now() - started
+                    });
+                }
+                const message = redactSecrets(error instanceof Error ? error.message : String(error));
+                return {
+                    ok: false,
+                    method: session ? "listAgents" : "connect",
+                    latencyMs: Date.now() - started,
+                    ...error?.status != null ? {
+                        status: error.status
+                    } : {},
+                    reason: session ? failure.summary : "could not load a gateway login",
+                    error: message,
+                    ...failure.delivered === false || failure.delivered === "maybe" ? {
+                        hint: wakeHint(session ?? {}).trim() || "Try again in a minute."
+                    } : {}
+                };
             }
         }
         async function gatewayCallOnce(session, method, body = {}, { signal } = {}) {
@@ -28327,7 +28373,7 @@ ts() { date -u +%Y-%m-%dT%H:%M:%SZ; }
             }
             return String(rawUrl).replace(/\/$/, "");
         }
-        function redactSecrets(text) {
+        function redactSecrets1(text) {
             let s = String(text);
             s = s.replace(/(^|[\s,{;])((?:set-cookie|cookie)\s*[:=]\s*)([^\n;]+?)(?=\s+(?:set-cookie|cookie|authorization|proxy-authorization)\b|\s*$)/gi, "$1$2<redacted>");
             s = s.replace(/(^|[\s,{;])((?:authorization|proxy-authorization)\s*[:=]\s*)(\S+(?:\s+\S+)?)/gi, "$1$2<redacted>");
@@ -28338,7 +28384,7 @@ ts() { date -u +%Y-%m-%dT%H:%M:%SZ; }
         }
         __webpack_require__.d(__webpack_exports__, {
             Re: ()=>assertAllowedCredentialUrl,
-            fp: ()=>redactSecrets
+            fp: ()=>redactSecrets1
         });
     },
     "./src/core/user-machine-guidance.js" (__unused_rspack___webpack_module__, __webpack_exports__, __webpack_require__) {

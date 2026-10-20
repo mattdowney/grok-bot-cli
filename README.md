@@ -394,6 +394,9 @@ Every failed gateway attempt appends one JSONL row (`time`, `method`, `status`,
 `~/.grok-bot-cli/gateway-failures.jsonl`. Rows never hold a URL, header, token or
 response body. Set `GROK_BOT_FAILURE_LOG` to another path, or to `off`.
 
+`gbot health` makes one live read call (`listAgents`) with no retry and no wake,
+then exits `0` with the bot count or `1` with the reason, for scripts and monitors.
+
 ## Local history
 
 Recording is **opt-in**. Set `GROK_BOT_HISTORY=on` (or `true`/`1`) to append successful
