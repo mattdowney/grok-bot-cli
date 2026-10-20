@@ -103,7 +103,7 @@ test("a sleeping box is woken through EnsureSandBox with the 1Password token bef
 test("a 401 from Cursor says the token expired and how to refresh it, without the token", { skip }, async (t) => {
   await setup(t, { backendStatus: 401 });
   await assert.rejects(connectGateway(), (e) => {
-    assert.equal(e.message, "Cursor token expired: rerun ~/Desktop/save-cursor-token.sh");
+    assert.equal(e.message, "Cursor token expired. Open Cursor once to sign in again.");
     assert.equal(e.status, 401);
     return true;
   });
@@ -119,7 +119,7 @@ test("an expired token during a wake stops the retries at once", { skip }, async
   });
   const started = Date.now();
   await assert.rejects(listAgents(session), (e) => {
-    assert.match(e.message, /^listAgents failed: the bots' cloud computer is asleep \(417\)\. Could not wake the box: Cursor token expired: rerun ~\/Desktop\/save-cursor-token\.sh$/);
+    assert.match(e.message, /^listAgents failed: the bots' cloud computer is asleep \(417\)\. Could not wake the box: Cursor token expired\. Open Cursor once to sign in again\.$/);
     assert.doesNotMatch(e.message, new RegExp(OP_TOKEN));
     return true;
   });

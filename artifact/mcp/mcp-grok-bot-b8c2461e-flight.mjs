@@ -28127,7 +28127,7 @@ ts() { date -u +%Y-%m-%dT%H:%M:%SZ; }
             return (process.env.CURSOR_ACCESS_TOKEN || "").trim();
         }
         const OP_READ_TIMEOUT_MS = 30000;
-        const CURSOR_TOKEN_EXPIRED = "Cursor token expired: rerun ~/Desktop/save-cursor-token.sh";
+        const CURSOR_TOKEN_EXPIRED = "Cursor token expired. Open Cursor once to sign in again.";
         let opTokenCache = null;
         function opTokenRef() {
             return (process.env.GROK_BOT_CURSOR_TOKEN_OP || "").trim();
