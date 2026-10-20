@@ -4,6 +4,7 @@ import * as __rspack_external_node_child_process_cd435d64 from "node:child_proce
 import * as __rspack_external_node_crypto_2e7c4b46 from "node:crypto";
 import * as __rspack_external_node_fs_1b05aee1 from "node:fs";
 import * as __rspack_external_node_fs_promises_3b710708 from "node:fs/promises";
+import * as __rspack_external_node_module_9de3fa2f from "node:module";
 import * as __rspack_external_node_net_5ed819e1 from "node:net";
 import * as __rspack_external_node_os_4f3c9d58 from "node:os";
 import * as __rspack_external_node_path_806ed179 from "node:path";
@@ -68,6 +69,9 @@ var __webpack_modules__ = {
     },
     "node:fs/promises" (module) {
         module.exports = __rspack_external_node_fs_promises_3b710708;
+    },
+    "node:module" (module) {
+        module.exports = __rspack_external_node_module_9de3fa2f;
     },
     "node:net" (module) {
         module.exports = __rspack_external_node_net_5ed819e1;
@@ -24634,6 +24638,73 @@ var __webpack_modules__ = {
             SX: ()=>normalizeCodexThreadId1
         });
     },
+    "./src/core/cursor-login.js" (__unused_rspack___webpack_module__, __webpack_exports__, __webpack_require__) {
+        var node_module__rspack_import_0 = __webpack_require__("node:module");
+        var node_fs__rspack_import_1 = __webpack_require__("node:fs");
+        var node_os__rspack_import_2 = __webpack_require__("node:os");
+        var node_path__rspack_import_3 = __webpack_require__("node:path");
+        const require = (0, node_module__rspack_import_0.createRequire)(import.meta.url);
+        const CURSOR_AUTH_KEY = "cursorAuth/accessToken";
+        function cursorStatePath({ home = (0, node_os__rspack_import_2.homedir)(), platform = process.platform, env = process.env } = {}) {
+            if (platform === "win32") {
+                const appData = env.APPDATA || (0, node_path__rspack_import_3.join)(home, "AppData/Roaming");
+                return (0, node_path__rspack_import_3.join)(appData, "Cursor/User/globalStorage/state.vscdb");
+            }
+            if (platform === "linux") {
+                const configHome = env.XDG_CONFIG_HOME || (0, node_path__rspack_import_3.join)(home, ".config");
+                return (0, node_path__rspack_import_3.join)(configHome, "Cursor/User/globalStorage/state.vscdb");
+            }
+            return (0, node_path__rspack_import_3.join)(home, "Library/Application Support/Cursor/User/globalStorage/state.vscdb");
+        }
+        function hasCursorLogin(options = {}) {
+            return (0, node_fs__rspack_import_1.existsSync)(cursorStatePath(options));
+        }
+        function readCursorAccessToken({ openDb, ...options } = {}) {
+            const path = cursorStatePath(options);
+            if (!openDb && !(0, node_fs__rspack_import_1.existsSync)(path)) return null;
+            let db;
+            try {
+                db = openDb ? openDb(path) : openCursorDb(path);
+            } catch (error) {
+                throw new Error(`Could not open Cursor's login database (${error instanceof Error ? error.message : String(error)}).`);
+            }
+            try {
+                const row = db.prepare(`select value from ItemTable where key = ?`).get(CURSOR_AUTH_KEY);
+                const value = row?.value;
+                const token = typeof value === "string" ? value : value == null ? "" : String(value);
+                return token.trim() || null;
+            } finally{
+                try {
+                    db.close?.();
+                } catch  {}
+            }
+        }
+        function openCursorDb(path) {
+            const { DatabaseSync } = require("node:sqlite");
+            return new DatabaseSync(path, {
+                readOnly: true
+            });
+        }
+        function jwtExpiryMs(token) {
+            const parts = String(token).split(".");
+            if (parts.length !== 3) return null;
+            try {
+                const claims = JSON.parse(Buffer.from(parts[1], "base64url").toString("utf8"));
+                return Number.isFinite(claims?.exp) ? claims.exp * 1000 : null;
+            } catch  {
+                return null;
+            }
+        }
+        function daysUntil1(expiryMs, now = Date.now()) {
+            if (expiryMs == null) return null;
+            return Math.floor((expiryMs - now) / (24 * 60 * 60 * 1000));
+        }
+        __webpack_require__.d(__webpack_exports__, {
+            $L: ()=>jwtExpiryMs,
+            MC: ()=>readCursorAccessToken,
+            sq: ()=>hasCursorLogin
+        });
+    },
     "./src/core/desktop-shim.js" (__unused_rspack___webpack_module__, __unused_rspack___webpack_exports__, __webpack_require__) {
         var node_child_process__rspack_import_0 = __webpack_require__("node:child_process");
         var node_fs__rspack_import_1 = __webpack_require__("node:fs");
@@ -25138,9 +25209,10 @@ ts() { date -u +%Y-%m-%dT%H:%M:%SZ; }
         var _headers_js__rspack_import_4 = __webpack_require__("./src/core/headers.js");
         var _app_session_js__rspack_import_5 = __webpack_require__("./src/core/app-session.js");
         var _failure_log_js__rspack_import_6 = __webpack_require__("./src/core/failure-log.js");
-        var _store_js__rspack_import_7 = __webpack_require__("./src/core/store.js");
-        var _url_policy_js__rspack_import_8 = __webpack_require__("./src/core/url-policy.js");
-        var _grok_approvals_js__rspack_import_9 = __webpack_require__("./src/core/grok-approvals.js");
+        var _cursor_login_js__rspack_import_7 = __webpack_require__("./src/core/cursor-login.js");
+        var _store_js__rspack_import_8 = __webpack_require__("./src/core/store.js");
+        var _url_policy_js__rspack_import_9 = __webpack_require__("./src/core/url-policy.js");
+        var _grok_approvals_js__rspack_import_10 = __webpack_require__("./src/core/grok-approvals.js");
         class GatewayError extends Error {
             constructor(message, { status, method } = {}){
                 super(message);
@@ -25178,8 +25250,27 @@ ts() { date -u +%Y-%m-%dT%H:%M:%SZ; }
         function opTokenRef() {
             return (process.env.GROK_BOT_CURSOR_TOKEN_OP || "").trim();
         }
+        function cursorLoginEnabled() {
+            return process.env.GROK_BOT_NO_CURSOR_LOGIN !== "1";
+        }
         function hasCursorToken() {
-            return Boolean(accessTokenFromEnv() || opTokenRef());
+            return Boolean(accessTokenFromEnv() || opTokenRef() || cursorLoginEnabled() && (0, _cursor_login_js__rspack_import_7.sq)());
+        }
+        let lastCursorToken = null;
+        function lastCursorTokenInfo() {
+            return lastCursorToken;
+        }
+        function tokenExpired(token) {
+            const expiryMs = (0, _cursor_login_js__rspack_import_7.$L)(token);
+            return expiryMs != null && expiryMs <= Date.now();
+        }
+        function expiredTokenError() {
+            return Object.assign(new GatewayError(CURSOR_TOKEN_EXPIRED, {
+                status: 401,
+                method: "cursorToken"
+            }), {
+                wakeBlocked: true
+            });
         }
         async function readOpToken(ref, { signal } = {}) {
             if (!/^op:\/\/[^/]+\/[^/]+\/[^/]+/.test(ref)) {
@@ -25201,7 +25292,7 @@ ts() { date -u +%Y-%m-%dT%H:%M:%SZ; }
             } catch (error) {
                 assertGatewayActive(signal);
                 const detail = String(error?.stderr || error?.code || "failed").trim().split("\n")[0].slice(0, 200);
-                throw Object.assign(new GatewayError(`Could not read the Cursor token from 1Password (op read ${ref}: ${(0, _url_policy_js__rspack_import_8.fp)(detail)}).`), {
+                throw Object.assign(new GatewayError(`Could not read the Cursor token from 1Password (op read ${ref}: ${(0, _url_policy_js__rspack_import_9.fp)(detail)}).`), {
                     wakeBlocked: true
                 });
             }
@@ -25212,23 +25303,50 @@ ts() { date -u +%Y-%m-%dT%H:%M:%SZ; }
             return token;
         }
         async function cursorAccessToken({ signal } = {}) {
+            const resolved = await resolveCursorToken({
+                signal
+            });
+            if (!resolved) {
+                lastCursorToken = null;
+                return null;
+            }
+            lastCursorToken = {
+                source: resolved.source,
+                expiryMs: (0, _cursor_login_js__rspack_import_7.$L)(resolved.token)
+            };
+            if (tokenExpired(resolved.token)) throw expiredTokenError();
+            return resolved;
+        }
+        async function resolveCursorToken({ signal }) {
             const fromEnv = accessTokenFromEnv();
             if (fromEnv) return {
                 token: fromEnv,
                 source: "env"
             };
             const ref = opTokenRef();
-            if (!ref) return null;
-            if (opTokenCache?.ref !== ref) opTokenCache = {
-                ref,
-                token: await readOpToken(ref, {
-                    signal
-                })
-            };
-            return {
-                token: opTokenCache.token,
-                source: "op"
-            };
+            if (ref) {
+                if (opTokenCache?.ref !== ref) opTokenCache = {
+                    ref,
+                    token: await readOpToken(ref, {
+                        signal
+                    })
+                };
+                return {
+                    token: opTokenCache.token,
+                    source: "op"
+                };
+            }
+            if (!cursorLoginEnabled()) return null;
+            let token;
+            try {
+                token = (0, _cursor_login_js__rspack_import_7.MC)();
+            } catch (error) {
+                throw new GatewayError(error instanceof Error ? error.message : String(error));
+            }
+            return token ? {
+                token,
+                source: "cursor"
+            } : null;
         }
         function gatewayTokenFromEnv() {
             return (process.env.GROK_BOT_GATEWAY_TOKEN || "").trim();
@@ -25238,7 +25356,7 @@ ts() { date -u +%Y-%m-%dT%H:%M:%SZ; }
             const url = (process.env.GROK_BOT_GATEWAY_URL || "").trim();
             if (url && token) {
                 return {
-                    gatewayUrl: (0, _url_policy_js__rspack_import_8.Re)(url.replace(/\/$/, ""), {
+                    gatewayUrl: (0, _url_policy_js__rspack_import_9.Re)(url.replace(/\/$/, ""), {
                         kind: "gateway"
                     }),
                     gatewayToken: token,
@@ -25257,7 +25375,7 @@ ts() { date -u +%Y-%m-%dT%H:%M:%SZ; }
             }
             if (!loaded) return null;
             return {
-                gatewayUrl: (0, _url_policy_js__rspack_import_8.Re)(loaded.gatewayUrl, {
+                gatewayUrl: (0, _url_policy_js__rspack_import_9.Re)(loaded.gatewayUrl, {
                     kind: "gateway"
                 }),
                 gatewayToken: loaded.gatewayToken,
@@ -25312,7 +25430,7 @@ ts() { date -u +%Y-%m-%dT%H:%M:%SZ; }
         }
         async function ensureSandbox({ token: accessToken, source }, { signal } = {}) {
             assertGatewayActive(signal);
-            const url = (0, _url_policy_js__rspack_import_8.Re)(backendBase(), {
+            const url = (0, _url_policy_js__rspack_import_9.Re)(backendBase(), {
                 kind: "backend"
             }) + "/aiserver.v1.GrokBotService/EnsureSandBox";
             let res, body;
@@ -25332,7 +25450,7 @@ ts() { date -u +%Y-%m-%dT%H:%M:%SZ; }
             assertGatewayActive(signal);
             const detail = String(body.message || body.error || body.raw || res.statusText);
             if ((res.status === 401 || res.status === 403) && /no longer supported|update/i.test(detail)) {
-                throw Object.assign(new GatewayError(`Cursor refused gbot's client version ${(0, _headers_js__rspack_import_4._6)(accessToken)["x-cursor-client-version"]}: ${(0, _url_policy_js__rspack_import_8.fp)(detail)} Set SAND_CLIENT_VERSION to the Grok Bot app's version.`, {
+                throw Object.assign(new GatewayError(`Cursor refused gbot's client version ${(0, _headers_js__rspack_import_4._6)(accessToken)["x-cursor-client-version"]}: ${(0, _url_policy_js__rspack_import_9.fp)(detail)} Set SAND_CLIENT_VERSION to the Grok Bot app's version.`, {
                     status: res.status,
                     method: "EnsureSandBox"
                 }), {
@@ -25341,15 +25459,15 @@ ts() { date -u +%Y-%m-%dT%H:%M:%SZ; }
             }
             if (res.status === 401 || res.status === 403) {
                 if (source === "op") opTokenCache = null;
-                const error = new GatewayError(source === "op" ? CURSOR_TOKEN_EXPIRED : "Cursor token expired or invalid: refresh CURSOR_ACCESS_TOKEN", {
+                throw Object.assign(new GatewayError(CURSOR_TOKEN_EXPIRED, {
                     status: res.status,
                     method: "EnsureSandBox"
+                }), {
+                    wakeBlocked: true
                 });
-                error.wakeBlocked = true;
-                throw error;
             }
             if (!res.ok) {
-                throw new GatewayError("EnsureSandBox failed: " + res.status + " " + (0, _url_policy_js__rspack_import_8.fp)(detail), {
+                throw new GatewayError("EnsureSandBox failed: " + res.status + " " + (0, _url_policy_js__rspack_import_9.fp)(detail), {
                     status: res.status,
                     method: "EnsureSandBox"
                 });
@@ -25360,7 +25478,7 @@ ts() { date -u +%Y-%m-%dT%H:%M:%SZ; }
                 throw new GatewayError("EnsureSandBox returned no gatewayUrl/gatewayToken. Auth may be a dashboard API key (those do not work).");
             }
             return {
-                gatewayUrl: (0, _url_policy_js__rspack_import_8.Re)(String(gatewayUrl).replace(/\/$/, ""), {
+                gatewayUrl: (0, _url_policy_js__rspack_import_9.Re)(String(gatewayUrl).replace(/\/$/, ""), {
                     kind: "gateway"
                 }),
                 gatewayToken: String(gatewayToken),
@@ -25379,14 +25497,24 @@ ts() { date -u +%Y-%m-%dT%H:%M:%SZ; }
             const fromApp = sessionFromApp();
             if (fromApp) return withOrigin(fromApp, "app");
             const fromEnv = accessTokenFromEnv();
-            const cursor = fromEnv ? {
-                token: fromEnv,
-                source: "env"
-            } : await cursorAccessToken({
-                signal
-            });
+            let cursor;
+            if (fromEnv) {
+                cursor = {
+                    token: fromEnv,
+                    source: "env"
+                };
+                lastCursorToken = {
+                    source: "env",
+                    expiryMs: (0, _cursor_login_js__rspack_import_7.$L)(fromEnv)
+                };
+                if (tokenExpired(fromEnv)) throw expiredTokenError();
+            } else {
+                cursor = await cursorAccessToken({
+                    signal
+                });
+            }
             if (!cursor) {
-                throw new GatewayError("Set CURSOR_ACCESS_TOKEN or GROK_BOT_CURSOR_TOKEN_OP, or GROK_BOT_GATEWAY_URL + GROK_BOT_GATEWAY_TOKEN. Do not use a Cursor dashboard API key.");
+                throw new GatewayError("Set CURSOR_ACCESS_TOKEN or GROK_BOT_CURSOR_TOKEN_OP, sign in to Cursor, or set GROK_BOT_GATEWAY_URL + GROK_BOT_GATEWAY_TOKEN. Do not use a Cursor dashboard API key.");
             }
             return withOrigin(await ensureSandbox(cursor, {
                 signal
@@ -25483,7 +25611,7 @@ ts() { date -u +%Y-%m-%dT%H:%M:%SZ; }
                     return "asked Cursor to wake the box (EnsureSandBox)";
                 } catch (error) {
                     assertGatewayActive(signal);
-                    const message = (0, _url_policy_js__rspack_import_8.fp)(error instanceof Error ? error.message : String(error));
+                    const message = (0, _url_policy_js__rspack_import_9.fp)(error instanceof Error ? error.message : String(error));
                     if (error?.wakeBlocked) {
                         state.fatal = message;
                         return message;
@@ -25583,6 +25711,26 @@ ts() { date -u +%Y-%m-%dT%H:%M:%SZ; }
                 }
             }
         }
+        const CURSOR_SOURCE_LABELS = null && {
+            env: "CURSOR_ACCESS_TOKEN",
+            op: "1Password",
+            cursor: "the Cursor app"
+        };
+        const TOKEN_WARN_DAYS = 7;
+        function cursorTokenReport() {
+            const info = lastCursorTokenInfo();
+            if (!info) return {};
+            const daysLeft = daysUntil(info.expiryMs);
+            return {
+                tokenSource: info.source,
+                ...daysLeft == null ? {} : {
+                    daysLeft
+                },
+                ...daysLeft != null && daysLeft < TOKEN_WARN_DAYS ? {
+                    tokenWarning: `Cursor token has ${daysLeft} day${daysLeft === 1 ? "" : "s"} left; open Cursor to renew it.`
+                } : {}
+            };
+        }
         async function checkGatewayHealth({ signal } = {}) {
             const started = Date.now();
             let session;
@@ -25596,9 +25744,11 @@ ts() { date -u +%Y-%m-%dT%H:%M:%SZ; }
                 return {
                     ok: true,
                     method: "listAgents",
+                    source: sessionOrigins.get(session) ?? "unknown",
                     latencyMs: Date.now() - started,
                     bots: agents.filter((r)=>!r.isGroup).length,
-                    groups: agents.filter((r)=>r.isGroup).length
+                    groups: agents.filter((r)=>r.isGroup).length,
+                    ...cursorTokenReport()
                 };
             } catch (error) {
                 assertGatewayActive(signal);
@@ -25617,12 +25767,14 @@ ts() { date -u +%Y-%m-%dT%H:%M:%SZ; }
                 return {
                     ok: false,
                     method: session ? "listAgents" : "connect",
+                    source: session ? sessionOrigins.get(session) ?? "unknown" : "none",
                     latencyMs: Date.now() - started,
                     ...error?.status != null ? {
                         status: error.status
                     } : {},
                     reason: session ? failure.summary : "could not load a gateway login",
                     error: message,
+                    ...cursorTokenReport(),
                     ...failure.delivered === false || failure.delivered === "maybe" ? {
                         hint: wakeHint(session ?? {}).trim() || "Try again in a minute."
                     } : {}
@@ -25631,7 +25783,7 @@ ts() { date -u +%Y-%m-%dT%H:%M:%SZ; }
         }
         async function gatewayCallOnce(session, method, body = {}, { signal } = {}) {
             assertGatewayActive(signal);
-            const base = (0, _url_policy_js__rspack_import_8.Re)(session.gatewayUrl, {
+            const base = (0, _url_policy_js__rspack_import_9.Re)(session.gatewayUrl, {
                 kind: "gateway"
             });
             const url = base + "/api/" + method;
@@ -25655,7 +25807,7 @@ ts() { date -u +%Y-%m-%dT%H:%M:%SZ; }
             if (!prompt) assertGatewayActive(signal);
             if (!res.ok) {
                 const detail = data.message || data.error || data.raw || res.statusText;
-                throw new GatewayError(method + " failed: " + res.status + " " + (0, _url_policy_js__rspack_import_8.fp)(String(detail).slice(0, 300)), {
+                throw new GatewayError(method + " failed: " + res.status + " " + (0, _url_policy_js__rspack_import_9.fp)(String(detail).slice(0, 300)), {
                     status: res.status,
                     method
                 });

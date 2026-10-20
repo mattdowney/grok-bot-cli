@@ -7,5 +7,6 @@ process.env.GROK_BOT_TEST = '1';
 process.env.GROK_BOT_GATEWAY_RETRY_MS ??= '0';
 process.env.GROK_BOT_FAILURE_LOG ??= 'off';
 delete process.env.GROK_BOT_CURSOR_TOKEN_OP;
+process.env.GROK_BOT_NO_CURSOR_LOGIN = '1';
 
 export default defineConfig(await agentBundleRstest());

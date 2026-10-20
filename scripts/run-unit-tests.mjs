@@ -38,6 +38,7 @@ const files = readdirSync(dir)
 // fast, and must not write to the real ~/.grok-bot-cli. Tests never reach the real 1Password.
 const env = { ...process.env, GROK_BOT_TEST: "1", GROK_BOT_GATEWAY_RETRY_MS: process.env.GROK_BOT_GATEWAY_RETRY_MS ?? "0", GROK_BOT_FAILURE_LOG: process.env.GROK_BOT_FAILURE_LOG ?? "off" };
 delete env.GROK_BOT_CURSOR_TOKEN_OP;
+env.GROK_BOT_NO_CURSOR_LOGIN = "1";
 const result = spawnSync(process.execPath, ["--test", ...files], {
   cwd: root,
   env,

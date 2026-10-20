@@ -5,6 +5,7 @@ import { setTimeout as sleep } from "node:timers/promises";
 import { ensureSandboxHeaders, headersFromEnsureSandbox, headersFromEnv, mergeGatewayHeaders, normalizeHeaderMap, requestHeaders } from "./headers.js";
 import { hasGrokBotGatewaySession, loadGrokBotGatewaySession } from "./app-session.js";
 import { logGatewayFailure } from "./failure-log.js";
+import { daysUntil, hasCursorLogin, jwtExpiryMs, readCursorAccessToken } from "./cursor-login.js";
 import { AVATAR_COLORS, AVATAR_SHAPES, MAX_GROUP_MEMBERS } from "./store.js";
 import { assertAllowedCredentialUrl, redactSecrets } from "./url-policy.js";
 import { grokApproval, grokApprovalResponseSchema } from "./grok-approvals.js";
@@ -57,8 +58,30 @@ function opTokenRef() {
   return (process.env.GROK_BOT_CURSOR_TOKEN_OP || "").trim();
 }
 
+// Reading Cursor's own login is on by default; GROK_BOT_NO_CURSOR_LOGIN=1 opts out (the test
+// runners set it, so a suite never picks up the real Cursor token on the machine running it).
+function cursorLoginEnabled() {
+  return process.env.GROK_BOT_NO_CURSOR_LOGIN !== "1";
+}
+
 function hasCursorToken() {
-  return Boolean(accessTokenFromEnv() || opTokenRef());
+  return Boolean(accessTokenFromEnv() || opTokenRef() || (cursorLoginEnabled() && hasCursorLogin()));
+}
+
+// The last Cursor token gbot resolved this run: its source and expiry, for `health` to report.
+let lastCursorToken = null;
+
+export function lastCursorTokenInfo() {
+  return lastCursorToken;
+}
+
+function tokenExpired(token) {
+  const expiryMs = jwtExpiryMs(token);
+  return expiryMs != null && expiryMs <= Date.now();
+}
+
+function expiredTokenError() {
+  return Object.assign(new GatewayError(CURSOR_TOKEN_EXPIRED, { status: 401, method: "cursorToken" }), { wakeBlocked: true });
 }
 
 async function readOpToken(ref, { signal } = {}) {
@@ -79,13 +102,36 @@ async function readOpToken(ref, { signal } = {}) {
 }
 
 // The Cursor access token and where it came from, or null when none is configured.
+// Source order: CURSOR_ACCESS_TOKEN, the 1Password override, then Cursor's own live login.
+// A token whose exp has already passed fails here, before any request is sent.
 async function cursorAccessToken({ signal } = {}) {
+  const resolved = await resolveCursorToken({ signal });
+  if (!resolved) {
+    lastCursorToken = null;
+    return null;
+  }
+  lastCursorToken = { source: resolved.source, expiryMs: jwtExpiryMs(resolved.token) };
+  if (tokenExpired(resolved.token)) throw expiredTokenError();
+  return resolved;
+}
+
+async function resolveCursorToken({ signal }) {
   const fromEnv = accessTokenFromEnv();
   if (fromEnv) return { token: fromEnv, source: "env" };
   const ref = opTokenRef();
-  if (!ref) return null;
-  if (opTokenCache?.ref !== ref) opTokenCache = { ref, token: await readOpToken(ref, { signal }) };
-  return { token: opTokenCache.token, source: "op" };
+  if (ref) {
+    if (opTokenCache?.ref !== ref) opTokenCache = { ref, token: await readOpToken(ref, { signal }) };
+    return { token: opTokenCache.token, source: "op" };
+  }
+  if (!cursorLoginEnabled()) return null;
+  // Read fresh every run: the Cursor app keeps this value renewed while it is open.
+  let token;
+  try {
+    token = readCursorAccessToken();
+  } catch (error) {
+    throw new GatewayError(error instanceof Error ? error.message : String(error));
+  }
+  return token ? { token, source: "cursor" } : null;
 }
 
 function gatewayTokenFromEnv() {
@@ -197,12 +243,7 @@ async function ensureSandbox({ token: accessToken, source }, { signal } = {}) {
   }
   if (res.status === 401 || res.status === 403) {
     if (source === "op") opTokenCache = null;
-    const error = new GatewayError(
-      source === "op" ? CURSOR_TOKEN_EXPIRED : "Cursor token expired or invalid: refresh CURSOR_ACCESS_TOKEN",
-      { status: res.status, method: "EnsureSandBox" },
-    );
-    error.wakeBlocked = true;
-    throw error;
+    throw Object.assign(new GatewayError(CURSOR_TOKEN_EXPIRED, { status: res.status, method: "EnsureSandBox" }), { wakeBlocked: true });
   }
   if (!res.ok) {
     throw new GatewayError("EnsureSandBox failed: " + res.status + " " + redactSecrets(detail), { status: res.status, method: "EnsureSandBox" });
@@ -229,11 +270,18 @@ export async function connectGateway({ signal } = {}) {
   if (override) return withOrigin(override, "env");
   const fromApp = sessionFromApp();
   if (fromApp) return withOrigin(fromApp, "app");
-  // An env token starts EnsureSandBox in this same tick, as before; only a 1Password read waits.
+  // An env token starts EnsureSandBox in this same tick, as before; a 1Password or Cursor read waits.
   const fromEnv = accessTokenFromEnv();
-  const cursor = fromEnv ? { token: fromEnv, source: "env" } : await cursorAccessToken({ signal });
+  let cursor;
+  if (fromEnv) {
+    cursor = { token: fromEnv, source: "env" };
+    lastCursorToken = { source: "env", expiryMs: jwtExpiryMs(fromEnv) };
+    if (tokenExpired(fromEnv)) throw expiredTokenError();
+  } else {
+    cursor = await cursorAccessToken({ signal });
+  }
   if (!cursor) {
-    throw new GatewayError("Set CURSOR_ACCESS_TOKEN or GROK_BOT_CURSOR_TOKEN_OP, or GROK_BOT_GATEWAY_URL + GROK_BOT_GATEWAY_TOKEN. Do not use a Cursor dashboard API key.");
+    throw new GatewayError("Set CURSOR_ACCESS_TOKEN or GROK_BOT_CURSOR_TOKEN_OP, sign in to Cursor, or set GROK_BOT_GATEWAY_URL + GROK_BOT_GATEWAY_TOKEN. Do not use a Cursor dashboard API key.");
   }
   return withOrigin(await ensureSandbox(cursor, { signal }), "ensure");
 }
@@ -389,13 +437,39 @@ async function gatewayCall(session, method, body = {}, { signal } = {}) {
  * One live read (listAgents) with no retry and no wake, so the answer reflects the box right now.
  * Never throws for gateway trouble; the result says what failed in plain words.
  */
+// How the gateway login was reached, and the days left on the Cursor token when one was used.
+// A token under a week from expiry gets a warning, since only reopening Cursor renews it.
+const CURSOR_SOURCE_LABELS = { env: "CURSOR_ACCESS_TOKEN", op: "1Password", cursor: "the Cursor app" };
+const TOKEN_WARN_DAYS = 7;
+
+function cursorTokenReport() {
+  const info = lastCursorTokenInfo();
+  if (!info) return {};
+  const daysLeft = daysUntil(info.expiryMs);
+  return {
+    tokenSource: info.source,
+    ...(daysLeft == null ? {} : { daysLeft }),
+    ...(daysLeft != null && daysLeft < TOKEN_WARN_DAYS
+      ? { tokenWarning: `Cursor token has ${daysLeft} day${daysLeft === 1 ? "" : "s"} left; open Cursor to renew it.` }
+      : {}),
+  };
+}
+
 export async function checkGatewayHealth({ signal } = {}) {
   const started = Date.now();
   let session;
   try {
     session = await connectGateway({ signal });
     const agents = unwrapList(await gatewayCallOnce(session, "listAgents", {}, { signal })).map(asRecord).filter((r) => r && r.id);
-    return { ok: true, method: "listAgents", latencyMs: Date.now() - started, bots: agents.filter((r) => !r.isGroup).length, groups: agents.filter((r) => r.isGroup).length };
+    return {
+      ok: true,
+      method: "listAgents",
+      source: sessionOrigins.get(session) ?? "unknown",
+      latencyMs: Date.now() - started,
+      bots: agents.filter((r) => !r.isGroup).length,
+      groups: agents.filter((r) => r.isGroup).length,
+      ...cursorTokenReport(),
+    };
   } catch (error) {
     assertGatewayActive(signal);
     const failure = classifyGatewayFailure(error);
@@ -406,10 +480,12 @@ export async function checkGatewayHealth({ signal } = {}) {
     return {
       ok: false,
       method: session ? "listAgents" : "connect",
+      source: session ? (sessionOrigins.get(session) ?? "unknown") : "none",
       latencyMs: Date.now() - started,
       ...(error?.status != null ? { status: error.status } : {}),
       reason: session ? failure.summary : "could not load a gateway login",
       error: message,
+      ...cursorTokenReport(),
       ...(failure.delivered === false || failure.delivered === "maybe" ? { hint: wakeHint(session ?? {}).trim() || "Try again in a minute." } : {}),
     };
   }

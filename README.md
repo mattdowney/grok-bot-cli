@@ -384,12 +384,17 @@ Grok Bot parks the cloud computer while you are away, and the gateway then answe
 the app session in case the app has woken it. Without a token, opening the Grok Bot
 app wakes the box.
 
-The token comes from `CURSOR_ACCESS_TOKEN`, or from 1Password when
-`GROK_BOT_CURSOR_TOKEN_OP` holds an `op://vault/item/field` reference: gbot runs
-`op read` only when it needs the token and keeps it in memory, never on disk or in
-output. The same token connects through `EnsureSandBox` when there is no app login.
-A `401` or `403` from Cursor fails at once with a message to refresh the token.
-App logins saved more than 7 days ago count as expired, as they do in the app.
+The Cursor access token is looked up in this order: `CURSOR_ACCESS_TOKEN`; then
+1Password when `GROK_BOT_CURSOR_TOKEN_OP` holds an `op://vault/item/field`
+reference (gbot runs `op read` only when it needs the token); then, if you use
+Cursor, Cursor's own signed-in token read live and read-only from its
+`state.vscdb` on each run. gbot never writes that database and never renews the
+token itself, so it cannot sign you out of Cursor; Cursor keeps its own token
+fresh while it runs. The token is kept in memory only, never on disk or in output.
+It wakes a sleeping box through `EnsureSandBox` and connects when there is no app
+login. If the token has expired, or Cursor answers `401`/`403`, gbot fails with
+"Cursor token expired. Open Cursor once to sign in again." App logins saved more
+than 7 days ago count as expired, as they do in the app.
 
 Reads are retried on any of those failures. `sendPrompt` and other writes are resent
 only when the box surely never saw them (`417`, unroutable `404`, a connection that
@@ -403,6 +408,8 @@ response body. Set `GROK_BOT_FAILURE_LOG` to another path, or to `off`.
 
 `gbot health` makes one live read call (`listAgents`) with no retry and no wake,
 then exits `0` with the bot count or `1` with the reason, for scripts and monitors.
+It names which login it used and, for a Cursor token, how many days are left,
+warning when fewer than seven remain.
 
 ## Local history
 

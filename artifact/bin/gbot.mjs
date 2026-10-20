@@ -5,6 +5,7 @@ import * as __rspack_external_node_child_process_cd435d64 from "node:child_proce
 import * as __rspack_external_node_crypto_2e7c4b46 from "node:crypto";
 import * as __rspack_external_node_fs_1b05aee1 from "node:fs";
 import * as __rspack_external_node_fs_promises_3b710708 from "node:fs/promises";
+import * as __rspack_external_node_module_9de3fa2f from "node:module";
 import * as __rspack_external_node_net_5ed819e1 from "node:net";
 import * as __rspack_external_node_os_4f3c9d58 from "node:os";
 import * as __rspack_external_node_path_806ed179 from "node:path";
@@ -9268,6 +9269,7 @@ var __webpack_modules__ = {
         const inputSchema = zod__rspack_import_2.Ikc({}).strict();
         const resultSchema = zod__rspack_import_2.Ikc({
             bots: zod__rspack_import_2.aig().int().optional(),
+            daysLeft: zod__rspack_import_2.aig().int().optional(),
             error: zod__rspack_import_2.YjP().optional(),
             exitCode: zod__rspack_import_2.KCZ([
                 zod__rspack_import_2.euz(0),
@@ -9279,17 +9281,36 @@ var __webpack_modules__ = {
             method: zod__rspack_import_2.YjP(),
             ok: zod__rspack_import_2.zMY(),
             reason: zod__rspack_import_2.YjP().optional(),
-            status: zod__rspack_import_2.aig().int().optional()
+            source: zod__rspack_import_2.YjP(),
+            status: zod__rspack_import_2.aig().int().optional(),
+            tokenSource: zod__rspack_import_2.k5n([
+                'env',
+                'op',
+                'cursor'
+            ]).optional(),
+            tokenWarning: zod__rspack_import_2.YjP().optional()
         }).strict();
+        const TOKEN_SOURCE_LABELS = {
+            env: 'CURSOR_ACCESS_TOKEN',
+            op: '1Password',
+            cursor: 'the Cursor app'
+        };
         async function health() {
             const result = await (0, _core_gateway_js__rspack_import_1.Jm)();
             const value = resultSchema.parse({
                 ...result,
                 exitCode: result.ok ? 0 : 1
             });
-            const text = value.ok ? `gateway ok: ${value.method} answered in ${value.latencyMs} ms (${value.bots} bots, ${value.groups} groups)` : [
+            const tokenLine = value.tokenSource ? `Cursor token from ${TOKEN_SOURCE_LABELS[value.tokenSource]}${value.daysLeft === undefined ? '' : `, ${value.daysLeft} days left`}` : undefined;
+            const text = value.ok ? [
+                `gateway ok: ${value.method} answered in ${value.latencyMs} ms (${value.bots} bots, ${value.groups} groups) via ${value.source}`,
+                tokenLine,
+                value.tokenWarning
+            ].filter(Boolean).join('\n') : [
                 `gateway failed: ${value.reason}`,
                 value.error,
+                tokenLine,
+                value.tokenWarning,
                 value.hint
             ].filter(Boolean).join('\n');
             return (0, react_jsx_runtime__rspack_import_0.jsx)(_agent_bundle_runtime__rspack_import_3.g.Result, {
@@ -14379,6 +14400,9 @@ var __webpack_modules__ = {
     },
     "node:fs/promises" (module) {
         module.exports = __rspack_external_node_fs_promises_3b710708;
+    },
+    "node:module" (module) {
+        module.exports = __rspack_external_node_module_9de3fa2f;
     },
     "node:net" (module) {
         module.exports = __rspack_external_node_net_5ed819e1;
@@ -47316,6 +47340,74 @@ var __webpack_modules__ = {
             f: ()=>openBackend
         });
     },
+    "./src/core/cursor-login.js" (__unused_rspack___webpack_module__, __webpack_exports__, __webpack_require__) {
+        var node_module__rspack_import_0 = __webpack_require__("node:module");
+        var node_fs__rspack_import_1 = __webpack_require__("node:fs");
+        var node_os__rspack_import_2 = __webpack_require__("node:os");
+        var node_path__rspack_import_3 = __webpack_require__("node:path");
+        const require = (0, node_module__rspack_import_0.createRequire)(import.meta.url);
+        const CURSOR_AUTH_KEY = "cursorAuth/accessToken";
+        function cursorStatePath({ home = (0, node_os__rspack_import_2.homedir)(), platform = process.platform, env = process.env } = {}) {
+            if (platform === "win32") {
+                const appData = env.APPDATA || (0, node_path__rspack_import_3.join)(home, "AppData/Roaming");
+                return (0, node_path__rspack_import_3.join)(appData, "Cursor/User/globalStorage/state.vscdb");
+            }
+            if (platform === "linux") {
+                const configHome = env.XDG_CONFIG_HOME || (0, node_path__rspack_import_3.join)(home, ".config");
+                return (0, node_path__rspack_import_3.join)(configHome, "Cursor/User/globalStorage/state.vscdb");
+            }
+            return (0, node_path__rspack_import_3.join)(home, "Library/Application Support/Cursor/User/globalStorage/state.vscdb");
+        }
+        function hasCursorLogin(options = {}) {
+            return (0, node_fs__rspack_import_1.existsSync)(cursorStatePath(options));
+        }
+        function readCursorAccessToken({ openDb, ...options } = {}) {
+            const path = cursorStatePath(options);
+            if (!openDb && !(0, node_fs__rspack_import_1.existsSync)(path)) return null;
+            let db;
+            try {
+                db = openDb ? openDb(path) : openCursorDb(path);
+            } catch (error) {
+                throw new Error(`Could not open Cursor's login database (${error instanceof Error ? error.message : String(error)}).`);
+            }
+            try {
+                const row = db.prepare(`select value from ItemTable where key = ?`).get(CURSOR_AUTH_KEY);
+                const value = row?.value;
+                const token = typeof value === "string" ? value : value == null ? "" : String(value);
+                return token.trim() || null;
+            } finally{
+                try {
+                    db.close?.();
+                } catch  {}
+            }
+        }
+        function openCursorDb(path) {
+            const { DatabaseSync } = require("node:sqlite");
+            return new DatabaseSync(path, {
+                readOnly: true
+            });
+        }
+        function jwtExpiryMs(token) {
+            const parts = String(token).split(".");
+            if (parts.length !== 3) return null;
+            try {
+                const claims = JSON.parse(Buffer.from(parts[1], "base64url").toString("utf8"));
+                return Number.isFinite(claims?.exp) ? claims.exp * 1000 : null;
+            } catch  {
+                return null;
+            }
+        }
+        function daysUntil(expiryMs, now = Date.now()) {
+            if (expiryMs == null) return null;
+            return Math.floor((expiryMs - now) / (24 * 60 * 60 * 1000));
+        }
+        __webpack_require__.d(__webpack_exports__, {
+            $L: ()=>jwtExpiryMs,
+            AQ: ()=>daysUntil,
+            MC: ()=>readCursorAccessToken,
+            sq: ()=>hasCursorLogin
+        });
+    },
     "./src/core/desktop-shim-bridge.js" (__unused_rspack___webpack_module__, __webpack_exports__, __webpack_require__) {
         const BRIDGE_SOURCE = "#!/usr/bin/env python3\n\"\"\"Stdio JSONL (Desktop) <-> WebSocket-over-unix (managed app-server daemon).\nReversible: remove CODEX_CLI_PATH wrapper. Does not read Desktop private pipes.\n\"\"\"\nfrom __future__ import annotations\nimport base64, hashlib, json, os, select, socket, struct, sys, threading, time\n\nSOCK = os.environ.get(\n    \"CODEX_APP_SERVER_SOCK\",\n    os.path.expanduser(\"~/.codex/app-server-control/app-server-control.sock\"),\n)\nLOG = os.environ.get(\"CODEX_STDIO_BRIDGE_LOG\", os.path.expanduser(\"~/.codex/bin/codex-stdio-to-daemon-ws.log\"))\nWS_GUID = \"258EAFA5-E914-47DA-95CA-C5AB0DC85B11\"\n\n# Wrapper contract: 0 served the session, 1 failed while stdio was still\n# pristine -- no stdin byte consumed and no stdout frame committed (wrapper\n# falls back to real Codex), 2 failed mid-session (wrapper exits promptly so\n# Desktop reconnects; the fallback must never run on half-consumed stdin or\n# dirty stdout).\nEXIT_SERVED = 0\nEXIT_PRE_STDIO = 1\nEXIT_MID_SESSION = 2\n\nCONNECT_TIMEOUT_S = float(os.environ.get(\"CODEX_BRIDGE_CONNECT_TIMEOUT\", \"10\"))\n# Bound from connect to the matching first daemon response: a daemon that\n# completes the upgrade but never answers the first RPC must not hold Desktop\n# past this. Only the matching initialize response/error (or the deadline\n# itself) clears it; notifications never do.\nFIRST_MESSAGE_TIMEOUT_S = float(os.environ.get(\"CODEX_BRIDGE_FIRST_MESSAGE_TIMEOUT\", \"30\"))\n# Bound on every mid-session socket send and stdout write: a wedged or\n# non-reading peer must not hang Desktop past this. Reads after a successful\n# init block with no timeout so healthy idle sessions survive silence.\nIO_TIMEOUT_S = float(os.environ.get(\"CODEX_BRIDGE_IO_TIMEOUT\", \"30\"))\n\ndef log(msg: str) -> None:\n    try:\n        with open(LOG, \"a\") as f:\n            f.write(time.strftime(\"%Y-%m-%dT%H:%M:%SZ\", time.gmtime()) + \" \" + msg + \"\\n\")\n    except OSError:\n        pass\n\ndef ws_connect(path: str, timeout: float = CONNECT_TIMEOUT_S):\n    \"\"\"Connect + HTTP upgrade under one absolute monotonic deadline.\n\n    Returns (socket, trailing) where trailing holds bytes coalesced after the\n    upgrade headers (TCP may deliver the 101 and the first WS frame together;\n    discarding them would lose the first message). Requires HTTP/1.1 101 plus\n    a matching Sec-WebSocket-Accept so a 200 (or any non-101) fails fast even\n    when the accept hash happens to be valid.\n    \"\"\"\n    deadline = time.monotonic() + timeout\n    s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)\n    s.settimeout(timeout)\n    try:\n        s.connect(path)\n        key = base64.b64encode(os.urandom(16)).decode()\n        expected = base64.b64encode(hashlib.sha1((key + WS_GUID).encode()).digest()).decode()\n        req = (\n            f\"GET /rpc HTTP/1.1\\r\\nHost: localhost\\r\\nUpgrade: websocket\\r\\n\"\n            f\"Connection: Upgrade\\r\\nSec-WebSocket-Key: {key}\\r\\nSec-WebSocket-Version: 13\\r\\n\\r\\n\"\n        ).encode()\n        s.settimeout(max(0.0, deadline - time.monotonic()))\n        s.sendall(req)\n        buf = b\"\"\n        while True:\n            if b\"\\r\\n\\r\\n\" in buf:\n                break\n            remaining = deadline - time.monotonic()\n            if remaining <= 0:\n                raise TimeoutError(\"WebSocket upgrade timed out\")\n            if len(buf) > 65536:\n                raise ConnectionError(\"WS upgrade headers too large\")\n            s.settimeout(remaining)\n            chunk = s.recv(4096)\n            if not chunk:\n                raise ConnectionError(\"daemon closed during WS upgrade\")\n            buf += chunk\n        head, _, trailing = buf.partition(b\"\\r\\n\\r\\n\")\n        lines = head.split(b\"\\r\\n\")\n        if not lines or lines[0].split(b\" \", 2)[:2] != [b\"HTTP/1.1\", b\"101\"]:\n            raise ConnectionError(f\"WS upgrade failed: {head[:200]!r}\")\n        accept = None\n        for line in lines[1:]:\n            name, sep, value = line.partition(b\":\")\n            if sep and name.strip().lower() == b\"sec-websocket-accept\":\n                accept = value.strip().decode(\"latin-1\")\n        if accept != expected:\n            raise ConnectionError(\"WS upgrade accept mismatch\")\n    except Exception:\n        try:\n            s.close()\n        except OSError:\n            pass\n        raise\n    # Keep one socket mode across reader and writer threads. Reads wait\n    # indefinitely in select; sends use their own absolute deadline.\n    s.setblocking(False)\n    return s, trailing\n\ndef mask_send(sock: socket.socket, payload: bytes, opcode: int = 1, deadline=None) -> None:\n    mask = os.urandom(4)\n    ln = len(payload)\n    if ln < 126:\n        hdr = bytes([0x80 | opcode, 0x80 | ln])\n    elif ln < 65536:\n        hdr = bytes([0x80 | opcode, 0x80 | 126]) + struct.pack(\"!H\", ln)\n    else:\n        hdr = bytes([0x80 | opcode, 0x80 | 127]) + struct.pack(\"!Q\", ln)\n    view = memoryview(hdr + mask + bytes(b ^ mask[i % 4] for i, b in enumerate(payload)))\n    while view:\n        remaining = deadline - time.monotonic()\n        if remaining <= 0:\n            raise TimeoutError(\"socket write timed out\")\n        _, writable, _ = select.select([], [sock], [], remaining)\n        if not writable:\n            raise TimeoutError(\"socket write timed out\")\n        try:\n            n = sock.send(view)\n        except BlockingIOError:\n            continue\n        if not n:\n            raise ConnectionError(\"socket closed during write\")\n        view = view[n:]\n\ndef locked_send(sock: socket.socket, lock: threading.Lock, payload: bytes, opcode: int = 1, timeout: float = CONNECT_TIMEOUT_S) -> None:\n    \"\"\"Serialized send sharing one monotonic budget across lock wait + send.\n\n    A non-reading peer must never wedge pong writes or timeout cleanup: on\n    expiry raise TimeoutError so the caller closes and exits without hanging.\n    \"\"\"\n    if timeout is None:\n        timeout = CONNECT_TIMEOUT_S\n    deadline = time.monotonic() + timeout\n    if timeout <= 0:\n        raise TimeoutError(\"send budget expired\")\n    if not lock.acquire(timeout=timeout):\n        raise TimeoutError(\"send lock timed out\")\n    try:\n        remaining = deadline - time.monotonic()\n        if remaining <= 0:\n            raise TimeoutError(\"send budget expired\")\n        mask_send(sock, payload, opcode=opcode, deadline=deadline)\n    finally:\n        lock.release()\n\ndef _buffered_reader(sock: socket.socket, initial: bytes = b\"\"):\n    buf = bytearray(initial)\n    def recv(n):\n        while len(buf) < n:\n            select.select([sock], [], [])\n            try:\n                chunk = sock.recv(n - len(buf))\n            except BlockingIOError:\n                continue\n            if not chunk:\n                raise ConnectionError(\"eof\")\n            buf.extend(chunk)\n        out = bytes(buf[:n])\n        del buf[:n]\n        return out\n    return recv\n\ndef read_frame(recv):\n    hdr = recv(2)\n    fin = bool(hdr[0] & 0x80)\n    opcode = hdr[0] & 0x0F\n    masked = bool(hdr[1] & 0x80)\n    ln = hdr[1] & 0x7F\n    if ln == 126:\n        ln = struct.unpack(\"!H\", recv(2))[0]\n    elif ln == 127:\n        ln = struct.unpack(\"!Q\", recv(8))[0]\n    mask = recv(4) if masked else b\"\"\n    payload = recv(ln)\n    if masked:\n        payload = bytes(b ^ mask[i % 4] for i, b in enumerate(payload))\n    return fin, opcode, payload\n\ndef read_message(recv, send_pong):\n    \"\"\"Next complete data message, assembling continuation frames.\n\n    Control frames are handled inline (pong answered, close reported) so a\n    fragmented message split around a ping still reassembles.\n    \"\"\"\n    opcode = None\n    parts = []\n    while True:\n        fin, op, payload = read_frame(recv)\n        if op == 0x8:\n            return (\"close\", None, b\"\")\n        if op == 0x9:\n            send_pong(payload)\n            continue\n        if op == 0xA:\n            continue\n        if op in (0x1, 0x2):\n            if opcode is not None:\n                raise ConnectionError(\"data frame inside fragmented message\")\n            if fin:\n                return (\"data\", op, payload)\n            opcode = op\n            parts.append(payload)\n            continue\n        if op == 0x0:\n            if opcode is None:\n                raise ConnectionError(\"stray continuation frame\")\n            parts.append(payload)\n            if fin:\n                return (\"data\", opcode, b\"\".join(parts))\n            continue\n        raise ConnectionError(f\"unsupported opcode {op}\")\n\ndef _is_daemon_response(payload: bytes, expect_id=None, known_ids=None) -> bool:\n    \"\"\"True only for the matching JSON-RPC response/error, never a notification.\n\n    The first-RPC timer must survive unrelated daemon notifications and foreign\n    responses: only the response/error whose id matches the client's initialize\n    (or, before it is known, any id the client already sent) proves the first\n    RPC got an answer. Timeouts clear it via the deadline, never via data.\n    \"\"\"\n    try:\n        text = payload.decode(\"utf-8\").strip()\n        msg = json.loads(text)\n    except Exception:\n        return False\n    if not isinstance(msg, dict):\n        return False\n    rid = msg.get(\"id\")\n    if rid is None or \"method\" in msg or (\"result\" not in msg and \"error\" not in msg):\n        return False\n    if expect_id is not None:\n        return rid == expect_id\n    if known_ids:\n        return rid in known_ids\n    return False\n\ndef _bounded_stdout_write(data: bytes, timeout: float = IO_TIMEOUT_S) -> None:\n    \"\"\"Write one daemon frame to stdout without hanging on a non-reading peer.\n\n    Waits for writability under the mid-session write budget and writes via\n    os.write in a loop, so a Desktop that stopped reading cannot hang the\n    bridge and then exit 1 on dirty stdout.\n    \"\"\"\n    if timeout is None:\n        timeout = IO_TIMEOUT_S\n    if timeout <= 0:\n        raise TimeoutError(\"stdout budget expired\")\n    fd = sys.stdout.fileno()\n    deadline = time.monotonic() + timeout\n    was_blocking = os.get_blocking(fd)\n    os.set_blocking(fd, False)\n    try:\n        view = memoryview(data)\n        while view:\n            remaining = deadline - time.monotonic()\n            if remaining <= 0:\n                raise TimeoutError(\"stdout write timed out\")\n            _, writable, _ = select.select([], [fd], [], remaining)\n            if not writable:\n                raise TimeoutError(\"stdout write timed out\")\n            try:\n                n = os.write(fd, view)\n            except BlockingIOError:\n                continue\n            view = view[n:]\n    finally:\n        os.set_blocking(fd, was_blocking)\n\ndef stdout_writer(sock: socket.socket, recv, send_pong, done: threading.Event, first_msg: threading.Event, output_forwarded: threading.Event, client_ids=None, init_state=None) -> None:\n    try:\n        while True:\n            kind, opcode, payload = read_message(recv, send_pong)\n            if kind == \"close\":\n                log(\"daemon WS close\")\n                return\n            if opcode == 0x1:\n                # Desktop StdioConnection expects newline-delimited JSON text\n                if not payload.endswith(b\"\\n\"):\n                    payload += b\"\\n\"\n            # Commit BEFORE writing: once a daemon byte is about to hit\n            # stdout, the session is dirty and the fallback must never run,\n            # even if the write itself blocks or fails.\n            output_forwarded.set()\n            _bounded_stdout_write(payload)\n            if opcode == 0x1:\n                expect = (init_state or {}).get(\"initialize_id\") if isinstance(init_state, dict) else None\n                if _is_daemon_response(payload, expect, client_ids or ()):\n                    first_msg.set()\n    except Exception as e:\n        log(f\"stdout_writer exit: {e}\")\n    finally:\n        done.set()\n\ndef main() -> int:\n    log(f\"start sock={SOCK}\")\n    try:\n        sock, pending = ws_connect(SOCK)\n    except Exception as e:\n        log(f\"connect failed: {e}\")\n        sys.stderr.write(f\"codex-stdio-to-daemon-ws: {e}\\n\")\n        return EXIT_PRE_STDIO\n    log(\"connected\")\n    connected_at = time.monotonic()\n    first_deadline = connected_at + FIRST_MESSAGE_TIMEOUT_S\n    send_lock = threading.Lock()\n    done = threading.Event()\n    first_msg = threading.Event()\n    output_forwarded = threading.Event()\n    client_ids = set()\n    init_state = {\"initialize_id\": None}\n\n    def _send_timeout() -> float:\n        # Before the first matching daemon response the remaining first-RPC\n        # budget bounds every send; after it each send gets the mid-session\n        # write budget. Idle reads are never timed out.\n        if not first_msg.is_set():\n            return max(0.0, first_deadline - time.monotonic())\n        return IO_TIMEOUT_S\n\n    def _cleanup_timeout() -> float:\n        # Timeout cleanup stays within the expired session budget: once the\n        # first-RPC deadline has passed, close directly instead of opening\n        # fresh windows that let a short budget take several timeout periods.\n        if not first_msg.is_set():\n            return max(0.0, first_deadline - time.monotonic())\n        return CONNECT_TIMEOUT_S\n\n    def send_pong(payload: bytes) -> None:\n        locked_send(sock, send_lock, payload, opcode=0xA, timeout=_send_timeout())\n    recv = _buffered_reader(sock, pending)\n    t = threading.Thread(target=stdout_writer, args=(sock, recv, send_pong, done, first_msg, output_forwarded, client_ids, init_state), daemon=True)\n    t.start()\n    # Byte-precise commit point: the fallback may run only while zero stdin\n    # bytes have left the pipe and no daemon payload was committed to stdout.\n    # Reads use os.read into a userspace line buffer (buffered readline could\n    # readahead past the commit point), and every byte read counts -- even a\n    # blank line. first_msg tracks the matching daemon response/error, never\n    # a notification.\n    stdin_bytes = 0\n    pending_in = b\"\"\n    clean_eof = False\n    try:\n        fd = sys.stdin.fileno()\n        while not done.is_set():\n            if not first_msg.is_set() and time.monotonic() >= first_deadline:\n                log(\"first daemon message timed out\")\n                break\n            ready, _, _ = select.select([fd], [], [], 0.5)\n            if not ready:\n                continue\n            chunk = os.read(fd, 65536)\n            if not chunk:\n                clean_eof = True\n                break\n            stdin_bytes += len(chunk)\n            pending_in += chunk\n            while b\"\\n\" in pending_in:\n                line, _, pending_in = pending_in.partition(b\"\\n\")\n                line = line.strip()\n                if not line:\n                    continue\n                try:\n                    try:\n                        obj = json.loads(line.decode(\"utf-8\"))\n                    except Exception:\n                        obj = None\n                    if isinstance(obj, dict) and obj.get(\"id\") is not None:\n                        client_ids.add(obj.get(\"id\"))\n                        if obj.get(\"method\") == \"initialize\" and init_state[\"initialize_id\"] is None:\n                            init_state[\"initialize_id\"] = obj.get(\"id\")\n                except Exception:\n                    pass\n                try:\n                    locked_send(sock, send_lock, line, timeout=_send_timeout())\n                except TimeoutError as e:\n                    log(f\"stdin forward timed out: {e}\")\n                    break\n                except Exception as e:\n                    log(f\"stdin forward failed: {e}\")\n                    break\n            else:\n                continue\n            break\n    except Exception as e:\n        log(f\"stdin loop exit: {e}\")\n    # Flush any buffered EOF-tail data BEFORE the WS Close: sending Close\n    # first would let the daemon discard the tail.\n    if clean_eof:\n        tail = pending_in.strip()\n        if tail and not done.is_set():\n            try:\n                locked_send(sock, send_lock, tail, timeout=_cleanup_timeout())\n            except Exception as e:\n                log(f\"eof flush failed: {e}\")\n    try:\n        locked_send(sock, send_lock, b\"\", opcode=0x8, timeout=_cleanup_timeout())\n    except Exception as e:\n        log(f\"close send failed: {e}\")\n    try:\n        try:\n            sock.shutdown(socket.SHUT_RDWR)\n        except OSError:\n            pass\n        sock.close()\n    except OSError:\n        pass\n    # Bound termination: wake the reader so no thread is left hung on recv.\n    t.join(timeout=0.5)\n    # A reader still exiting could commit output after this check. In that\n    # case pristine stdio cannot be proven, so never permit fallback.\n    if t.is_alive():\n        output_forwarded.set()\n    if clean_eof:\n        log(\"exit\")\n        return EXIT_SERVED\n    # Reader died, first RPC timed out, post-upgrade I/O timed out, or stdin\n    # broke: fail open only while stdio is still pristine -- no stdin byte\n    # ever consumed AND no daemon payload ever committed to stdout. Committed\n    # output forces a mid-session exit so Desktop reconnects instead of\n    # falling back to stock Codex on a corrupted stream.\n    rc = EXIT_MID_SESSION if (stdin_bytes or output_forwarded.is_set()) else EXIT_PRE_STDIO\n    log(f\"exit rc={rc}\")\n    return rc\n\nif __name__ == \"__main__\":\n    raise SystemExit(main())\n";
         __webpack_require__.d(__webpack_exports__, {}, {
@@ -47980,9 +48072,10 @@ ts() { date -u +%Y-%m-%dT%H:%M:%SZ; }
         var _headers_js__rspack_import_4 = __webpack_require__("./src/core/headers.js");
         var _app_session_js__rspack_import_5 = __webpack_require__("./src/core/app-session.js");
         var _failure_log_js__rspack_import_6 = __webpack_require__("./src/core/failure-log.js");
-        var _store_js__rspack_import_7 = __webpack_require__("./src/core/store.js");
-        var _url_policy_js__rspack_import_8 = __webpack_require__("./src/core/url-policy.js");
-        var _grok_approvals_js__rspack_import_9 = __webpack_require__("./src/core/grok-approvals.js");
+        var _cursor_login_js__rspack_import_7 = __webpack_require__("./src/core/cursor-login.js");
+        var _store_js__rspack_import_8 = __webpack_require__("./src/core/store.js");
+        var _url_policy_js__rspack_import_9 = __webpack_require__("./src/core/url-policy.js");
+        var _grok_approvals_js__rspack_import_10 = __webpack_require__("./src/core/grok-approvals.js");
         class GatewayError extends Error {
             constructor(message, { status, method } = {}){
                 super(message);
@@ -48020,8 +48113,27 @@ ts() { date -u +%Y-%m-%dT%H:%M:%SZ; }
         function opTokenRef() {
             return (process.env.GROK_BOT_CURSOR_TOKEN_OP || "").trim();
         }
+        function cursorLoginEnabled() {
+            return process.env.GROK_BOT_NO_CURSOR_LOGIN !== "1";
+        }
         function hasCursorToken() {
-            return Boolean(accessTokenFromEnv() || opTokenRef());
+            return Boolean(accessTokenFromEnv() || opTokenRef() || cursorLoginEnabled() && (0, _cursor_login_js__rspack_import_7.sq)());
+        }
+        let lastCursorToken = null;
+        function lastCursorTokenInfo() {
+            return lastCursorToken;
+        }
+        function tokenExpired(token) {
+            const expiryMs = (0, _cursor_login_js__rspack_import_7.$L)(token);
+            return expiryMs != null && expiryMs <= Date.now();
+        }
+        function expiredTokenError() {
+            return Object.assign(new GatewayError(CURSOR_TOKEN_EXPIRED, {
+                status: 401,
+                method: "cursorToken"
+            }), {
+                wakeBlocked: true
+            });
         }
         async function readOpToken(ref, { signal } = {}) {
             if (!/^op:\/\/[^/]+\/[^/]+\/[^/]+/.test(ref)) {
@@ -48043,7 +48155,7 @@ ts() { date -u +%Y-%m-%dT%H:%M:%SZ; }
             } catch (error) {
                 assertGatewayActive(signal);
                 const detail = String(error?.stderr || error?.code || "failed").trim().split("\n")[0].slice(0, 200);
-                throw Object.assign(new GatewayError(`Could not read the Cursor token from 1Password (op read ${ref}: ${(0, _url_policy_js__rspack_import_8.fp)(detail)}).`), {
+                throw Object.assign(new GatewayError(`Could not read the Cursor token from 1Password (op read ${ref}: ${(0, _url_policy_js__rspack_import_9.fp)(detail)}).`), {
                     wakeBlocked: true
                 });
             }
@@ -48054,23 +48166,50 @@ ts() { date -u +%Y-%m-%dT%H:%M:%SZ; }
             return token;
         }
         async function cursorAccessToken({ signal } = {}) {
+            const resolved = await resolveCursorToken({
+                signal
+            });
+            if (!resolved) {
+                lastCursorToken = null;
+                return null;
+            }
+            lastCursorToken = {
+                source: resolved.source,
+                expiryMs: (0, _cursor_login_js__rspack_import_7.$L)(resolved.token)
+            };
+            if (tokenExpired(resolved.token)) throw expiredTokenError();
+            return resolved;
+        }
+        async function resolveCursorToken({ signal }) {
             const fromEnv = accessTokenFromEnv();
             if (fromEnv) return {
                 token: fromEnv,
                 source: "env"
             };
             const ref = opTokenRef();
-            if (!ref) return null;
-            if (opTokenCache?.ref !== ref) opTokenCache = {
-                ref,
-                token: await readOpToken(ref, {
-                    signal
-                })
-            };
-            return {
-                token: opTokenCache.token,
-                source: "op"
-            };
+            if (ref) {
+                if (opTokenCache?.ref !== ref) opTokenCache = {
+                    ref,
+                    token: await readOpToken(ref, {
+                        signal
+                    })
+                };
+                return {
+                    token: opTokenCache.token,
+                    source: "op"
+                };
+            }
+            if (!cursorLoginEnabled()) return null;
+            let token;
+            try {
+                token = (0, _cursor_login_js__rspack_import_7.MC)();
+            } catch (error) {
+                throw new GatewayError(error instanceof Error ? error.message : String(error));
+            }
+            return token ? {
+                token,
+                source: "cursor"
+            } : null;
         }
         function gatewayTokenFromEnv() {
             return (process.env.GROK_BOT_GATEWAY_TOKEN || "").trim();
@@ -48080,7 +48219,7 @@ ts() { date -u +%Y-%m-%dT%H:%M:%SZ; }
             const url = (process.env.GROK_BOT_GATEWAY_URL || "").trim();
             if (url && token) {
                 return {
-                    gatewayUrl: (0, _url_policy_js__rspack_import_8.Re)(url.replace(/\/$/, ""), {
+                    gatewayUrl: (0, _url_policy_js__rspack_import_9.Re)(url.replace(/\/$/, ""), {
                         kind: "gateway"
                     }),
                     gatewayToken: token,
@@ -48099,7 +48238,7 @@ ts() { date -u +%Y-%m-%dT%H:%M:%SZ; }
             }
             if (!loaded) return null;
             return {
-                gatewayUrl: (0, _url_policy_js__rspack_import_8.Re)(loaded.gatewayUrl, {
+                gatewayUrl: (0, _url_policy_js__rspack_import_9.Re)(loaded.gatewayUrl, {
                     kind: "gateway"
                 }),
                 gatewayToken: loaded.gatewayToken,
@@ -48154,7 +48293,7 @@ ts() { date -u +%Y-%m-%dT%H:%M:%SZ; }
         }
         async function ensureSandbox({ token: accessToken, source }, { signal } = {}) {
             assertGatewayActive(signal);
-            const url = (0, _url_policy_js__rspack_import_8.Re)(backendBase(), {
+            const url = (0, _url_policy_js__rspack_import_9.Re)(backendBase(), {
                 kind: "backend"
             }) + "/aiserver.v1.GrokBotService/EnsureSandBox";
             let res, body;
@@ -48174,7 +48313,7 @@ ts() { date -u +%Y-%m-%dT%H:%M:%SZ; }
             assertGatewayActive(signal);
             const detail = String(body.message || body.error || body.raw || res.statusText);
             if ((res.status === 401 || res.status === 403) && /no longer supported|update/i.test(detail)) {
-                throw Object.assign(new GatewayError(`Cursor refused gbot's client version ${(0, _headers_js__rspack_import_4._6)(accessToken)["x-cursor-client-version"]}: ${(0, _url_policy_js__rspack_import_8.fp)(detail)} Set SAND_CLIENT_VERSION to the Grok Bot app's version.`, {
+                throw Object.assign(new GatewayError(`Cursor refused gbot's client version ${(0, _headers_js__rspack_import_4._6)(accessToken)["x-cursor-client-version"]}: ${(0, _url_policy_js__rspack_import_9.fp)(detail)} Set SAND_CLIENT_VERSION to the Grok Bot app's version.`, {
                     status: res.status,
                     method: "EnsureSandBox"
                 }), {
@@ -48183,15 +48322,15 @@ ts() { date -u +%Y-%m-%dT%H:%M:%SZ; }
             }
             if (res.status === 401 || res.status === 403) {
                 if (source === "op") opTokenCache = null;
-                const error = new GatewayError(source === "op" ? CURSOR_TOKEN_EXPIRED : "Cursor token expired or invalid: refresh CURSOR_ACCESS_TOKEN", {
+                throw Object.assign(new GatewayError(CURSOR_TOKEN_EXPIRED, {
                     status: res.status,
                     method: "EnsureSandBox"
+                }), {
+                    wakeBlocked: true
                 });
-                error.wakeBlocked = true;
-                throw error;
             }
             if (!res.ok) {
-                throw new GatewayError("EnsureSandBox failed: " + res.status + " " + (0, _url_policy_js__rspack_import_8.fp)(detail), {
+                throw new GatewayError("EnsureSandBox failed: " + res.status + " " + (0, _url_policy_js__rspack_import_9.fp)(detail), {
                     status: res.status,
                     method: "EnsureSandBox"
                 });
@@ -48202,7 +48341,7 @@ ts() { date -u +%Y-%m-%dT%H:%M:%SZ; }
                 throw new GatewayError("EnsureSandBox returned no gatewayUrl/gatewayToken. Auth may be a dashboard API key (those do not work).");
             }
             return {
-                gatewayUrl: (0, _url_policy_js__rspack_import_8.Re)(String(gatewayUrl).replace(/\/$/, ""), {
+                gatewayUrl: (0, _url_policy_js__rspack_import_9.Re)(String(gatewayUrl).replace(/\/$/, ""), {
                     kind: "gateway"
                 }),
                 gatewayToken: String(gatewayToken),
@@ -48221,14 +48360,24 @@ ts() { date -u +%Y-%m-%dT%H:%M:%SZ; }
             const fromApp = sessionFromApp();
             if (fromApp) return withOrigin(fromApp, "app");
             const fromEnv = accessTokenFromEnv();
-            const cursor = fromEnv ? {
-                token: fromEnv,
-                source: "env"
-            } : await cursorAccessToken({
-                signal
-            });
+            let cursor;
+            if (fromEnv) {
+                cursor = {
+                    token: fromEnv,
+                    source: "env"
+                };
+                lastCursorToken = {
+                    source: "env",
+                    expiryMs: (0, _cursor_login_js__rspack_import_7.$L)(fromEnv)
+                };
+                if (tokenExpired(fromEnv)) throw expiredTokenError();
+            } else {
+                cursor = await cursorAccessToken({
+                    signal
+                });
+            }
             if (!cursor) {
-                throw new GatewayError("Set CURSOR_ACCESS_TOKEN or GROK_BOT_CURSOR_TOKEN_OP, or GROK_BOT_GATEWAY_URL + GROK_BOT_GATEWAY_TOKEN. Do not use a Cursor dashboard API key.");
+                throw new GatewayError("Set CURSOR_ACCESS_TOKEN or GROK_BOT_CURSOR_TOKEN_OP, sign in to Cursor, or set GROK_BOT_GATEWAY_URL + GROK_BOT_GATEWAY_TOKEN. Do not use a Cursor dashboard API key.");
             }
             return withOrigin(await ensureSandbox(cursor, {
                 signal
@@ -48325,7 +48474,7 @@ ts() { date -u +%Y-%m-%dT%H:%M:%SZ; }
                     return "asked Cursor to wake the box (EnsureSandBox)";
                 } catch (error) {
                     assertGatewayActive(signal);
-                    const message = (0, _url_policy_js__rspack_import_8.fp)(error instanceof Error ? error.message : String(error));
+                    const message = (0, _url_policy_js__rspack_import_9.fp)(error instanceof Error ? error.message : String(error));
                     if (error?.wakeBlocked) {
                         state.fatal = message;
                         return message;
@@ -48425,6 +48574,26 @@ ts() { date -u +%Y-%m-%dT%H:%M:%SZ; }
                 }
             }
         }
+        const CURSOR_SOURCE_LABELS = null && {
+            env: "CURSOR_ACCESS_TOKEN",
+            op: "1Password",
+            cursor: "the Cursor app"
+        };
+        const TOKEN_WARN_DAYS = 7;
+        function cursorTokenReport() {
+            const info = lastCursorTokenInfo();
+            if (!info) return {};
+            const daysLeft = (0, _cursor_login_js__rspack_import_7.AQ)(info.expiryMs);
+            return {
+                tokenSource: info.source,
+                ...daysLeft == null ? {} : {
+                    daysLeft
+                },
+                ...daysLeft != null && daysLeft < TOKEN_WARN_DAYS ? {
+                    tokenWarning: `Cursor token has ${daysLeft} day${daysLeft === 1 ? "" : "s"} left; open Cursor to renew it.`
+                } : {}
+            };
+        }
         async function checkGatewayHealth({ signal } = {}) {
             const started = Date.now();
             let session;
@@ -48438,9 +48607,11 @@ ts() { date -u +%Y-%m-%dT%H:%M:%SZ; }
                 return {
                     ok: true,
                     method: "listAgents",
+                    source: sessionOrigins.get(session) ?? "unknown",
                     latencyMs: Date.now() - started,
                     bots: agents.filter((r)=>!r.isGroup).length,
-                    groups: agents.filter((r)=>r.isGroup).length
+                    groups: agents.filter((r)=>r.isGroup).length,
+                    ...cursorTokenReport()
                 };
             } catch (error) {
                 assertGatewayActive(signal);
@@ -48455,16 +48626,18 @@ ts() { date -u +%Y-%m-%dT%H:%M:%SZ; }
                         elapsedMs: Date.now() - started
                     });
                 }
-                const message = (0, _url_policy_js__rspack_import_8.fp)(error instanceof Error ? error.message : String(error));
+                const message = (0, _url_policy_js__rspack_import_9.fp)(error instanceof Error ? error.message : String(error));
                 return {
                     ok: false,
                     method: session ? "listAgents" : "connect",
+                    source: session ? sessionOrigins.get(session) ?? "unknown" : "none",
                     latencyMs: Date.now() - started,
                     ...error?.status != null ? {
                         status: error.status
                     } : {},
                     reason: session ? failure.summary : "could not load a gateway login",
                     error: message,
+                    ...cursorTokenReport(),
                     ...failure.delivered === false || failure.delivered === "maybe" ? {
                         hint: wakeHint(session ?? {}).trim() || "Try again in a minute."
                     } : {}
@@ -48473,7 +48646,7 @@ ts() { date -u +%Y-%m-%dT%H:%M:%SZ; }
         }
         async function gatewayCallOnce(session, method, body = {}, { signal } = {}) {
             assertGatewayActive(signal);
-            const base = (0, _url_policy_js__rspack_import_8.Re)(session.gatewayUrl, {
+            const base = (0, _url_policy_js__rspack_import_9.Re)(session.gatewayUrl, {
                 kind: "gateway"
             });
             const url = base + "/api/" + method;
@@ -48497,7 +48670,7 @@ ts() { date -u +%Y-%m-%dT%H:%M:%SZ; }
             if (!prompt) assertGatewayActive(signal);
             if (!res.ok) {
                 const detail = data.message || data.error || data.raw || res.statusText;
-                throw new GatewayError(method + " failed: " + res.status + " " + (0, _url_policy_js__rspack_import_8.fp)(String(detail).slice(0, 300)), {
+                throw new GatewayError(method + " failed: " + res.status + " " + (0, _url_policy_js__rspack_import_9.fp)(String(detail).slice(0, 300)), {
                     status: res.status,
                     method
                 });
@@ -48571,8 +48744,8 @@ ts() { date -u +%Y-%m-%dT%H:%M:%SZ; }
                 name: input.name,
                 description: input.description || "",
                 title: input.title || "",
-                avatarShape: assertAvatar("shape", input.avatarShape, _store_js__rspack_import_7.Jb),
-                avatarColor: assertAvatar("color", input.avatarColor, _store_js__rspack_import_7.T7),
+                avatarShape: assertAvatar("shape", input.avatarShape, _store_js__rspack_import_8.Jb),
+                avatarColor: assertAvatar("color", input.avatarColor, _store_js__rspack_import_8.T7),
                 origin: "user"
             });
             return unwrapOne(data);
@@ -48587,8 +48760,8 @@ ts() { date -u +%Y-%m-%dT%H:%M:%SZ; }
                 description: patch.description !== undefined ? String(patch.description) : rec.description
             };
             if (patch.title !== undefined) profile.title = String(patch.title);
-            if (patch.avatarShape !== undefined) profile.avatarShape = assertAvatar("shape", patch.avatarShape, _store_js__rspack_import_7.Jb);
-            if (patch.avatarColor !== undefined) profile.avatarColor = assertAvatar("color", patch.avatarColor, _store_js__rspack_import_7.T7);
+            if (patch.avatarShape !== undefined) profile.avatarShape = assertAvatar("shape", patch.avatarShape, _store_js__rspack_import_8.Jb);
+            if (patch.avatarColor !== undefined) profile.avatarColor = assertAvatar("color", patch.avatarColor, _store_js__rspack_import_8.T7);
             await gatewayCall(session, "updateAgent", {
                 id: rec.id,
                 profile
@@ -48833,12 +49006,12 @@ ts() { date -u +%Y-%m-%dT%H:%M:%SZ; }
                     id: target.id,
                     name: target.name
                 },
-                approvals: transcript.entries.map(_grok_approvals_js__rspack_import_9.Ny).filter(Boolean),
+                approvals: transcript.entries.map(_grok_approvals_js__rspack_import_10.Ny).filter(Boolean),
                 coverage: "Latest 200 transcript entries only; older requests require the owning Grok UI."
             };
         }
         async function respondGrokApproval(session, ref, input) {
-            const { entryId, requestId, decision } = _grok_approvals_js__rspack_import_9.T5.parse({
+            const { entryId, requestId, decision } = _grok_approvals_js__rspack_import_10.T5.parse({
                 ...input,
                 target: ref
             });
