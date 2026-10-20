@@ -1,3 +1,8 @@
+import { grokBotAppVersion } from "./app-session.js";
+
+// Fallback when neither SAND_CLIENT_VERSION nor an installed Grok Bot app names a version.
+const DEFAULT_SAND_CLIENT_VERSION = "0.72.0";
+
 export function normalizeHeaderMap(obj) {
   if (!obj || typeof obj !== "object" || Array.isArray(obj)) return {};
   const out = {};
@@ -47,7 +52,7 @@ export function ensureSandboxHeaders(accessToken) {
     "connect-protocol-version": "1",
     authorization: "Bearer " + accessToken,
     "x-cursor-client-type": "sand",
-    "x-cursor-client-version": process.env.SAND_CLIENT_VERSION || "0.20.0",
+    "x-cursor-client-version": process.env.SAND_CLIENT_VERSION || grokBotAppVersion() || DEFAULT_SAND_CLIENT_VERSION,
     "x-sand-box-namespace": process.env.SAND_BOX_NAMESPACE || "prod",
   };
 }

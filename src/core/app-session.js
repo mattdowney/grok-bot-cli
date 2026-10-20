@@ -143,6 +143,17 @@ export function grokBotGatewayDescriptorPath(home = homedir(), platform = proces
   return join(grokBotAppDataPath(home, platform, env), "gateway-descriptor.json");
 }
 
+// The running app records its version in desktop-status.json; Cursor refuses EnsureSandBox
+// from client versions it no longer supports, so gbot reports the installed app's version.
+export function grokBotAppVersion({ home = homedir(), platform = process.platform, env = process.env } = {}) {
+  try {
+    const status = JSON.parse(readFileSync(join(grokBotAppDataPath(home, platform, env), "desktop-status.json"), "utf8"));
+    return typeof status?.appVersion === "string" && /^\d+\.\d+\.\d+$/.test(status.appVersion) ? status.appVersion : null;
+  } catch {
+    return null;
+  }
+}
+
 function sessionEnv({ env = process.env, appData } = {}) {
   // Windows tests pass appData directly; empty string clears APPDATA to exercise the home fallback.
   if (appData !== undefined) return { ...env, APPDATA: appData };
