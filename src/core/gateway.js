@@ -50,7 +50,7 @@ function accessTokenFromEnv() {
 // GROK_BOT_CURSOR_TOKEN_OP names a 1Password secret (op://vault/item/field). gbot reads it with
 // `op read` only when a Cursor token is needed, and keeps it in memory for this process.
 const OP_READ_TIMEOUT_MS = 30000;
-const CURSOR_TOKEN_EXPIRED = "Cursor token expired: rerun ~/Desktop/save-cursor-token.sh";
+const CURSOR_TOKEN_EXPIRED = "Cursor token expired. Open Cursor once to sign in again.";
 let opTokenCache = null;
 
 function opTokenRef() {
